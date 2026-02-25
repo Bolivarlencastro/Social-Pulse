@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Konquest - Painel de Líderes</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class', // Force manual toggling, ignoring system 'media' preference
+        theme: {
+          extend: {}
+        }
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <style>
+      :root {
+        color-scheme: light; /* Forces browser native elements (scrollbars, inputs) to light mode */
+        --chart-grid-stroke: #e2e8f0; /* gray-200 */
+        --chart-text-stroke: #64748b; /* slate-500 */
+        --chart-line-main-stroke: #8B5CF6; /* purple-500 */
+        --chart-line-secondary-stroke: #a8a29e; /* stone-400 */
+        --chart-tooltip-bg: rgba(255, 255, 255, 0.8);
+        --chart-tooltip-border: #e5e7eb; /* gray-200 */
+        --chart-tooltip-text: #1f2937; /* gray-800 */
+        --chart-tooltip-label-text: #111827; /* gray-900 */
+      }
+
+      body {
+        font-family: 'Roboto', sans-serif;
+        background-color: #ffffff;
+        color: #1f2937;
+      }
+      
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #e5e7eb; /* light: gray-200 */
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #9ca3af; /* light: gray-400 */
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #6b7280; /* light: gray-500 */
+      }
+      html {
+        /* This prevents layout shifts when the scrollbar appears */
+        overflow-y: scroll;
+      }
+
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+
+      /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.1.1",
+    "react-dom/": "https://esm.sh/react-dom@^19.1.1/",
+    "react/": "https://esm.sh/react@^19.1.1/",
+    "recharts": "https://esm.sh/recharts@^2.12.7",
+    "emoji-picker-react": "https://esm.sh/emoji-picker-react@^4.9.4"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
