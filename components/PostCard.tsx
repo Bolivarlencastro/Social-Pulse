@@ -306,6 +306,11 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
              ) : (
                 <EmptyCover className="w-full h-full" />
              )}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm">
+                    <Icon name="play_arrow" size="md" />
+                </div>
+            </div>
             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <div className="flex items-center gap-4 text-white font-bold">
                     <div className="flex items-center gap-1.5">
@@ -460,14 +465,24 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
 
       {/* Post Content: cover first (feed behavior) */}
       {post.imageUrl && !hasImageError ? (
-          <div className="w-full bg-gray-100 border-y border-gray-200 cursor-pointer" onClick={() => onOpenPost?.(post.id)}>
+          <div className="w-full bg-gray-100 border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
               <div className="aspect-square w-full">
                   <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
               </div>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm">
+                      <Icon name="play_arrow" size="md" />
+                  </div>
+              </div>
           </div>
       ) : (
-          <div className="w-full border-y border-gray-200 cursor-pointer" onClick={() => onOpenPost?.(post.id)}>
+          <div className="w-full border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
               <EmptyCover className="aspect-square w-full" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm">
+                      <Icon name="play_arrow" size="md" />
+                  </div>
+              </div>
           </div>
       )}
 
