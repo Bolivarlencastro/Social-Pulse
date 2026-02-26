@@ -17,7 +17,7 @@ const App: React.FC = () => {
   const [courseViewMode, setCourseViewMode] = useState<'list' | 'create'>('list');
 
   // Fetch roadmap data once at app level or when needed
-  const { data: roadmapData } = useStoryMapping('/roadmap.md');
+  const { data: roadmapData } = useStoryMapping(`${import.meta.env.BASE_URL}roadmap.md`);
 
   const handleInternalLink = (target: string) => {
     setIsRoadmapOpen(false);
