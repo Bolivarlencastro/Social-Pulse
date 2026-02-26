@@ -28,7 +28,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
             <div className="flex items-center gap-1 sm:gap-2">
                 
                 <button
-                    className="w-12 h-12 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 transition-colors"
+                    className="w-12 h-12 hidden lg:flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-200 transition-colors"
                     aria-label="Tela cheia"
                 >
                     <Icon name="fullscreen" />

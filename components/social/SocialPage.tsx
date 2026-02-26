@@ -30,6 +30,10 @@ type CreateSubtype =
     | 'H5P'
     | null;
 
+type EdgeCaseKey = 'emptyDataset' | 'missingCover' | 'longContent' | 'largeVolume';
+
+type EdgeCaseState = Record<EdgeCaseKey, boolean>;
+
 const CREATE_MAIN_OPTIONS: Array<{ type: Exclude<CreateMainType, null>; label: string; icon: string }> = [
     { type: 'FILE', label: 'Arquivo', icon: 'file_upload' },
     { type: 'LINK', label: 'Link', icon: 'link' },
@@ -81,6 +85,8 @@ interface SocialPageProps {
 }
 
 export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed' }) => {
+    const INITIAL_FEED_BATCH = 8;
+    const FEED_BATCH_SIZE = 6;
     const currentUserId = 'user-4';
     const [viewMode, setViewMode] = useState<SocialViewMode>(initialViewMode);
     const [feedDisplayMode, setFeedDisplayMode] = useState<'timeline' | 'grid'>('timeline');
@@ -105,22 +111,123 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const [createExternalUrl, setCreateExternalUrl] = useState('');
     const [createChannelId, setCreateChannelId] = useState<string>(() => CHANNELS[0]?.id || '');
     const [createDuration, setCreateDuration] = useState<number>(60);
+    const [edgeCases, setEdgeCases] = useState<EdgeCaseState>({
+        emptyDataset: false,
+        missingCover: false,
+        longContent: false,
+        largeVolume: false
+    });
+    const [isEdgeMenuOpen, setIsEdgeMenuOpen] = useState(false);
+    const [isEdgeHotspotActive, setIsEdgeHotspotActive] = useState(false);
+    const [isTouchDevice, setIsTouchDevice] = useState(false);
+    const [loadedFeedCount, setLoadedFeedCount] = useState(INITIAL_FEED_BATCH);
+    const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
     const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
     const lightboxRatingMenuRef = React.useRef<HTMLDivElement | null>(null);
     const lightboxCommentInputRef = React.useRef<HTMLInputElement | null>(null);
+    const edgeMenuRef = React.useRef<HTMLDivElement | null>(null);
+    const feedSentinelRef = React.useRef<HTMLDivElement | null>(null);
+    const feedLoadTimeoutRef = React.useRef<number | null>(null);
+    const socialScrollRef = React.useRef<HTMLDivElement | null>(null);
+
+    const scenarioChannels = React.useMemo(() => {
+        if (edgeCases.emptyDataset) return [] as Channel[];
+
+        let list = channels.map(channel => ({ ...channel }));
+
+        if (edgeCases.missingCover) {
+            list = list.map(channel => ({ ...channel, imageUrl: '' }));
+        }
+
+        if (edgeCases.longContent) {
+            list = list.map(channel => ({
+                ...channel,
+                name: `${channel.name} • canal com título propositalmente muito longo para validação visual`,
+                description: `${channel.description} Este canal possui uma descrição extensa para validar truncamento, quebra de linha e comportamento em diferentes breakpoints do layout social.`
+            }));
+        }
+
+        if (edgeCases.largeVolume && list.length > 0) {
+            const extraChannels: Channel[] = Array.from({ length: 24 }, (_, index) => {
+                const seed = list[index % list.length];
+                return {
+                    ...seed,
+                    id: `edge-channel-${index + 1}`,
+                    name: `${seed.name} ${index + 1}`,
+                    isSubscribed: index % 2 === 0,
+                    ownerId: index % 5 === 0 ? currentUserId : seed.ownerId
+                };
+            });
+            list = [...list, ...extraChannels];
+        }
+
+        return list;
+    }, [channels, currentUserId, edgeCases.emptyDataset, edgeCases.largeVolume, edgeCases.longContent, edgeCases.missingCover]);
+
+    const scenarioPosts = React.useMemo(() => {
+        if (edgeCases.emptyDataset) return [] as Post[];
+
+        let list = posts.map(post => ({ ...post }));
+
+        if (edgeCases.missingCover) {
+            list = list.map(post => ({ ...post, imageUrl: undefined }));
+        }
+
+        if (edgeCases.longContent) {
+            list = list.map(post => ({
+                ...post,
+                text: `${post.text} Conteúdo adicional para stress test de truncamento no card e expansão no lightbox. Este texto foi estendido propositalmente com múltiplas frases, detalhes de contexto, observações e exemplos para testar edge cases de leitura e legibilidade.`
+            }));
+        }
+
+        if (edgeCases.largeVolume && list.length > 0 && scenarioChannels.length > 0) {
+            const channelIds = scenarioChannels.map(channel => channel.id);
+            const extraPosts: Post[] = Array.from({ length: 40 }, (_, index) => {
+                const seed = list[index % list.length];
+                return {
+                    ...seed,
+                    id: `edge-post-${index + 1}`,
+                    channelId: channelIds[index % channelIds.length],
+                    timestamp: `${index + 1} min atrás`
+                };
+            });
+            list = [...extraPosts, ...list];
+        }
+
+        return list;
+    }, [edgeCases.emptyDataset, edgeCases.largeVolume, edgeCases.longContent, edgeCases.missingCover, posts, scenarioChannels]);
 
     const channelsMap = React.useMemo(
-        () => channels.reduce((acc, channel) => {
+        () => scenarioChannels.reduce((acc, channel) => {
             acc[channel.id] = channel;
             return acc;
         }, {} as Record<string, Channel>),
-        [channels]
+        [scenarioChannels]
     );
 
     // Update viewMode if initialViewMode prop changes
     React.useEffect(() => {
         setViewMode(initialViewMode);
     }, [initialViewMode]);
+
+    React.useEffect(() => {
+        setIsTouchDevice(window.matchMedia('(hover: none)').matches);
+    }, []);
+
+    React.useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            if (!isEdgeMenuOpen) return;
+            if (edgeMenuRef.current && !edgeMenuRef.current.contains(event.target as Node)) {
+                setIsEdgeMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, [isEdgeMenuOpen]);
+
+    const toggleEdgeCase = (key: EdgeCaseKey) => {
+        setEdgeCases(prev => ({ ...prev, [key]: !prev[key] }));
+    };
 
     const handleRate = (postId: string, ratingValue: number) => {
         setPosts(prev => prev.map(post => {
@@ -288,9 +395,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         )));
     };
 
-    const activeChannels = channels.filter(channel => channel.isActive !== false);
+    const activeChannels = scenarioChannels.filter(channel => channel.isActive !== false);
     const myOwnedChannels = activeChannels.filter(channel => channel.ownerId === currentUserId);
-    const subscribedChannels = activeChannels.filter(channel => channel.isSubscribed);
+    const subscribedChannels = activeChannels.filter(
+        channel => channel.isSubscribed && channel.ownerId !== currentUserId
+    );
     const availableCategories = Array.from(new Set(activeChannels.map(channel => channel.category || 'Geral')));
     const channelsInSelectedCategory = selectedCategory
         ? activeChannels.filter(channel => (channel.category || 'Geral') === selectedCategory)
@@ -299,7 +408,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         ? channelsInSelectedCategory.filter(channel => channel.id === selectedChannel)
         : channelsInSelectedCategory;
     const activeChannelIds = new Set(activeChannels.map(channel => channel.id));
-    const visiblePosts = posts.filter(post => post.isActive !== false && activeChannelIds.has(post.channelId));
+    const visiblePosts = scenarioPosts.filter(post => post.isActive !== false && activeChannelIds.has(post.channelId));
     const postsByCategory = selectedCategory
         ? visiblePosts.filter(post => (channelsMap[post.channelId]?.category || 'Geral') === selectedCategory)
         : visiblePosts;
@@ -318,6 +427,53 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         }
         return filteredPosts;
     }, [feedQuickFilter, filteredPosts]);
+    const visibleFeedPosts = React.useMemo(
+        () => displayedFeedPosts.slice(0, loadedFeedCount),
+        [displayedFeedPosts, loadedFeedCount]
+    );
+    const hasMoreFeedPosts = loadedFeedCount < displayedFeedPosts.length;
+    React.useEffect(() => {
+        setLoadedFeedCount(Math.min(INITIAL_FEED_BATCH, displayedFeedPosts.length));
+        setIsLoadingMoreFeed(false);
+    }, [INITIAL_FEED_BATCH, displayedFeedPosts.length, feedDisplayMode, selectedChannel, selectedCategory, feedQuickFilter]);
+
+    React.useEffect(() => {
+        if (viewMode !== 'feed' || !hasMoreFeedPosts) return;
+        if (!feedSentinelRef.current || !socialScrollRef.current) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const [entry] = entries;
+                if (!entry?.isIntersecting || isLoadingMoreFeed || feedLoadTimeoutRef.current) return;
+                setIsLoadingMoreFeed(true);
+                feedLoadTimeoutRef.current = window.setTimeout(() => {
+                    setLoadedFeedCount((prev) => Math.min(prev + FEED_BATCH_SIZE, displayedFeedPosts.length));
+                    setIsLoadingMoreFeed(false);
+                    feedLoadTimeoutRef.current = null;
+                }, 650);
+            },
+            {
+                root: socialScrollRef.current,
+                rootMargin: '320px 0px',
+                threshold: 0
+            }
+        );
+
+        observer.observe(feedSentinelRef.current);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [FEED_BATCH_SIZE, displayedFeedPosts.length, hasMoreFeedPosts, isLoadingMoreFeed, viewMode]);
+
+    React.useEffect(() => {
+        return () => {
+            if (feedLoadTimeoutRef.current) {
+                window.clearTimeout(feedLoadTimeoutRef.current);
+                feedLoadTimeoutRef.current = null;
+            }
+        };
+    }, []);
     const featuredPreviewPosts = React.useMemo(
         () => [...visiblePosts].sort((a, b) => b.rating - a.rating).slice(0, 3),
         [visiblePosts]
@@ -341,7 +497,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         : feedQuickFilter === 'favorites'
             ? 'Pulses favoritos'
             : '';
-    const activePost = activePostId ? posts.find(post => post.id === activePostId) : null;
+    const activePost = activePostId ? displayedFeedPosts.find(post => post.id === activePostId) || scenarioPosts.find(post => post.id === activePostId) || null : null;
     const activePostIndex = activePostId ? displayedFeedPosts.findIndex(post => post.id === activePostId) : -1;
     const hasPreviousPost = activePostIndex > 0;
     const hasNextPost = activePostIndex >= 0 && activePostIndex < displayedFeedPosts.length - 1;
@@ -581,12 +737,18 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
 
         if (type === 'PODCAST' && post.mediaUrl) {
             return (
-                <div className="w-full h-full flex items-center justify-center p-8">
-                    <div className="w-full max-w-xl bg-white/10 rounded-xl p-6">
-                        <h3 className="text-white font-bold mb-4">Podcast</h3>
-                        <audio controls className="w-full">
-                            <source src={post.mediaUrl} />
-                        </audio>
+                <div className="relative w-full h-full">
+                    <div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{ backgroundImage: `url(${post.imageUrl || KONQUEST_DEFAULT_COVER_IMAGE})` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center px-4 sm:px-8">
+                        <div className="w-full max-w-xl rounded-xl bg-white p-4 sm:p-6 shadow-lg">
+                            <h3 className="text-gray-900 font-bold mb-3">Podcast</h3>
+                            <audio controls className="w-full">
+                                <source src={post.mediaUrl} />
+                            </audio>
+                        </div>
                     </div>
                 </div>
             );
@@ -688,7 +850,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'feed' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
             >
                 <Icon name="dynamic_feed" size="sm" />
-                <span>Feed Social</span>
+                <span>Feed</span>
             </button>
             <button
                 onClick={() => setViewMode('channels')}
@@ -702,14 +864,14 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
                     <button
                         onClick={() => setFeedDisplayMode('timeline')}
-                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'timeline' ? 'text-purple-600' : 'text-gray-400 hover:text-gray-600'}`}
                         title="Timeline"
                     >
                         <Icon name="view_day" size="sm" />
                     </button>
                     <button
                         onClick={() => setFeedDisplayMode('grid')}
-                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'grid' ? 'text-purple-600' : 'text-gray-400 hover:text-gray-600'}`}
                         title="Grid"
                     >
                         <Icon name="grid_view" size="sm" />
@@ -720,14 +882,14 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
                     <button
                         disabled
-                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'timeline' ? 'text-purple-400' : 'text-gray-300'}`}
                         title="Timeline"
                     >
                         <Icon name="view_day" size="sm" />
                     </button>
                     <button
                         disabled
-                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'grid' ? 'text-purple-400' : 'text-gray-300'}`}
                         title="Grid"
                     >
                         <Icon name="grid_view" size="sm" />
@@ -785,7 +947,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                         className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
                                         loading="lazy"
                                     />
-                                    <p className="truncate">{post.text}</p>
+                                    <p className="min-w-0 flex-1 text-left truncate">{post.text}</p>
                                 </div>
                             </button>
                         ))}
@@ -829,7 +991,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                         className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
                                         loading="lazy"
                                     />
-                                    <p className="truncate">{post.text}</p>
+                                    <p className="min-w-0 flex-1 text-left truncate">{post.text}</p>
                                 </div>
                             </button>
                         ))}
@@ -842,7 +1004,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     );
 
     return (
-        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8">
+        <div ref={socialScrollRef} className="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
                 {viewMode === 'management' ? (
                     <div className="space-y-8 animate-fadeIn">
@@ -921,7 +1083,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
                                         <div className="space-y-1">
-                                            {subscribedChannels.map(channel => renderChannelSidebarOption(channel))}
+                                            {subscribedChannels.length > 0 ? (
+                                                subscribedChannels.map(channel => renderChannelSidebarOption(channel))
+                                            ) : (
+                                                <p className="px-3 py-2 text-xs text-gray-400">Sem canais inscritos no momento.</p>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -941,15 +1107,19 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     >
                                         Todas as categorias
                                     </button>
-                                    {availableCategories.map(category => (
-                                        <button
-                                            key={category}
-                                            onClick={() => setSelectedCategory(category)}
-                                            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedCategory === category ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                                        >
-                                            {category}
-                                        </button>
-                                    ))}
+                                    {availableCategories.length > 0 ? (
+                                        availableCategories.map(category => (
+                                            <button
+                                                key={category}
+                                                onClick={() => setSelectedCategory(category)}
+                                                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedCategory === category ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                            >
+                                                {category}
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <p className="px-3 py-2 text-xs text-gray-400">Sem categorias disponíveis.</p>
+                                    )}
                                 </div>
                             </div>
                         </aside>
@@ -958,8 +1128,9 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         <div className="lg:col-span-6 lg:order-2 space-y-6">
                             {renderTabsBar()}
                             <div className="grid grid-cols-1 gap-6">
-                                {channelsFilteredForList.map(channel => (
-                                    <div key={channel.id} className="relative bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow">
+                                {channelsFilteredForList.length > 0 ? (
+                                    channelsFilteredForList.map(channel => (
+                                        <div key={channel.id} className="relative bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow">
                                         <details className="absolute top-3 right-3 z-10">
                                             <summary className="list-none w-9 h-9 rounded-full bg-white/90 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-white [&::-webkit-details-marker]:hidden">
                                                 <Icon name="more_horiz" size="sm" />
@@ -1041,15 +1212,24 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                                     </div>
                                                     <button
                                                         onClick={() => handleToggleChannelSubscription(channel.id)}
-                                                        className={`text-sm font-medium ${channel.isSubscribed ? 'text-green-700 hover:text-green-800' : 'text-purple-700 hover:text-purple-800'}`}
+                                                        className="text-sm font-medium text-gray-700 transition-colors hover:text-purple-700"
                                                     >
                                                         {channel.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
                                                     </button>
                                                 </div>
                                             </div>
                                         </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center">
+                                        <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 mx-auto flex items-center justify-center mb-3">
+                                            <Icon name="inbox" size="md" />
+                                        </div>
+                                        <p className="text-sm font-semibold text-gray-900">Nenhum canal disponível</p>
+                                        <p className="text-xs text-gray-500 mt-1">Ajuste os filtros ou crie um novo canal para começar.</p>
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </div>
 
@@ -1110,28 +1290,44 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     )}
                                 </div>
                             ) : (
-                                <div className={feedDisplayMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'space-y-6'}>
-                                    {displayedFeedPosts.map(post => (
-                                        <PostCard 
-                                            key={post.id} 
-                                            post={post} 
-                                            onRate={handleRate} 
-                                            onAddComment={handleAddComment}
-                                            onChannelClick={setSelectedChannel}
-                                            channelName={channelsMap[post.channelId]?.name}
-                                            onEditPost={handleEditPost}
-                                            onDeletePost={handleDeletePost}
-                                            onDeactivatePost={handleDeactivatePost}
-                                            onEditComment={handleEditComment}
-                                            onDeleteComment={handleDeleteComment}
-                                            onOpenPost={setActivePostId}
-                                            viewMode={feedDisplayMode === 'grid' ? 'grid' : 'list'}
-                                            isChannelSubscribed={!!channelsMap[post.channelId]?.isSubscribed}
-                                            onToggleChannelSubscription={handleToggleChannelSubscription}
-                                            onToggleBookmark={handleTogglePostBookmark}
-                                        />
-                                    ))}
-                                </div>
+                                <>
+                                    <div className={feedDisplayMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'space-y-6'}>
+                                        {visibleFeedPosts.map(post => (
+                                            <PostCard 
+                                                key={post.id} 
+                                                post={post} 
+                                                onRate={handleRate} 
+                                                onAddComment={handleAddComment}
+                                                onChannelClick={setSelectedChannel}
+                                                channelName={channelsMap[post.channelId]?.name}
+                                                onEditPost={handleEditPost}
+                                                onDeletePost={handleDeletePost}
+                                                onDeactivatePost={handleDeactivatePost}
+                                                onEditComment={handleEditComment}
+                                                onDeleteComment={handleDeleteComment}
+                                                onOpenPost={setActivePostId}
+                                                viewMode={feedDisplayMode === 'grid' ? 'grid' : 'list'}
+                                                isChannelSubscribed={!!channelsMap[post.channelId]?.isSubscribed}
+                                                onToggleChannelSubscription={handleToggleChannelSubscription}
+                                                onToggleBookmark={handleTogglePostBookmark}
+                                            />
+                                        ))}
+                                    </div>
+                                    <div ref={feedSentinelRef} className="h-1" />
+                                    {isLoadingMoreFeed && (
+                                        <div className="py-6 flex justify-center">
+                                            <div className="slingshot-loader" aria-label="Carregando mais pulses">
+                                                <span className="slingshot-dot slingshot-dot-left"></span>
+                                                <span className="slingshot-dot slingshot-dot-right"></span>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {!hasMoreFeedPosts && displayedFeedPosts.length > 0 && (
+                                        <div className="py-4 text-center text-xs font-semibold tracking-wide uppercase text-gray-400">
+                                            Fim do feed
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
 
@@ -1165,7 +1361,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
                                         <div className="space-y-1">
-                                            {subscribedChannels.map(channel => renderChannelSidebarOption(channel))}
+                                            {subscribedChannels.length > 0 ? (
+                                                subscribedChannels.map(channel => renderChannelSidebarOption(channel))
+                                            ) : (
+                                                <p className="px-3 py-2 text-xs text-gray-400">Sem canais inscritos no momento.</p>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -1186,15 +1386,19 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     >
                                         Todas as categorias
                                     </button>
-                                    {availableCategories.map(category => (
-                                        <button
-                                            key={category}
-                                            onClick={() => setSelectedCategory(category)}
-                                            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedCategory === category ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                                        >
-                                            {category}
-                                        </button>
-                                    ))}
+                                    {availableCategories.length > 0 ? (
+                                        availableCategories.map(category => (
+                                            <button
+                                                key={category}
+                                                onClick={() => setSelectedCategory(category)}
+                                                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedCategory === category ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                            >
+                                                {category}
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <p className="px-3 py-2 text-xs text-gray-400">Sem categorias disponíveis.</p>
+                                    )}
                                 </div>
                             </div>
                         </aside>
@@ -1205,6 +1409,80 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         </aside>
                     </div>
                 )}
+            </div>
+            <div
+                ref={edgeMenuRef}
+                className="fixed bottom-0 right-0 z-40 w-28 h-28"
+                onMouseEnter={() => setIsEdgeHotspotActive(true)}
+                onMouseLeave={() => {
+                    if (!isEdgeMenuOpen) setIsEdgeHotspotActive(false);
+                }}
+            >
+                {isEdgeMenuOpen && (
+                    <div className="absolute bottom-20 right-4 w-[320px] rounded-xl border border-gray-200 bg-white shadow-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <p className="text-sm font-bold text-gray-900">Edge Cases</p>
+                            <button
+                                onClick={() => {
+                                    setEdgeCases({
+                                        emptyDataset: false,
+                                        missingCover: false,
+                                        longContent: false,
+                                        largeVolume: false
+                                    });
+                                }}
+                                className="text-xs font-semibold text-purple-700 hover:text-purple-800"
+                            >
+                                Resetar
+                            </button>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="flex items-start justify-between gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                <div>
+                                    <p className="text-sm font-medium text-gray-800">Sem canais e pulses</p>
+                                    <p className="text-xs text-gray-500">Força empty states nas colunas esquerda, central e direita.</p>
+                                </div>
+                                <input type="checkbox" checked={edgeCases.emptyDataset} onChange={() => toggleEdgeCase('emptyDataset')} className="mt-1" />
+                            </label>
+                            <label className="flex items-start justify-between gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                <div>
+                                    <p className="text-sm font-medium text-gray-800">Sem imagem de capa</p>
+                                    <p className="text-xs text-gray-500">Remove capa de canais e pulses para validar fallback visual.</p>
+                                </div>
+                                <input type="checkbox" checked={edgeCases.missingCover} onChange={() => toggleEdgeCase('missingCover')} className="mt-1" />
+                            </label>
+                            <label className="flex items-start justify-between gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                <div>
+                                    <p className="text-sm font-medium text-gray-800">Títulos e descrições longas</p>
+                                    <p className="text-xs text-gray-500">Expande textos para testar truncamento e quebras.</p>
+                                </div>
+                                <input type="checkbox" checked={edgeCases.longContent} onChange={() => toggleEdgeCase('longContent')} className="mt-1" />
+                            </label>
+                            <label className="flex items-start justify-between gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                                <div>
+                                    <p className="text-sm font-medium text-gray-800">Muitos canais e pulses</p>
+                                    <p className="text-xs text-gray-500">Replica dados para validar densidade e scroll.</p>
+                                </div>
+                                <input type="checkbox" checked={edgeCases.largeVolume} onChange={() => toggleEdgeCase('largeVolume')} className="mt-1" />
+                            </label>
+                        </div>
+                    </div>
+                )}
+                <button
+                    onClick={() => {
+                        setIsEdgeMenuOpen(prev => !prev);
+                        setIsEdgeHotspotActive(true);
+                    }}
+                    className={`absolute bottom-4 right-4 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all ${
+                        (isTouchDevice || isEdgeHotspotActive || isEdgeMenuOpen)
+                            ? 'opacity-100 translate-y-0 bg-purple-600 text-white'
+                            : 'opacity-0 translate-y-2 pointer-events-none bg-purple-600 text-white'
+                    }`}
+                    aria-label="Abrir menu de edge cases"
+                    title="Edge cases"
+                >
+                    <Icon name="science" size="md" />
+                </button>
             </div>
             {isCreateModalOpen && (
                 <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeCreateModal}>
@@ -1351,7 +1629,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             )}
             {activePost && (
                 <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-0" onClick={() => setActivePostId(null)}>
-                    <div className="relative w-full h-full py-3 sm:py-4 lg:py-6 lg:px-20" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative w-full h-full lg:py-6 lg:px-20" onClick={(e) => e.stopPropagation()}>
                         {hasPreviousPost && (
                             <button
                                 onClick={(e) => {
@@ -1398,12 +1676,48 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         >
                             <Icon name={isLightboxSidebarCollapsed ? 'right_panel_open' : 'right_panel_close'} size="md" />
                         </button>
-                        <div className="w-full h-full bg-white rounded-xl lg:rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
-                            <div className={`${isLightboxSidebarCollapsed ? 'lg:col-span-12' : 'lg:col-span-8'} bg-black flex items-center justify-center min-h-[320px]`}>
+                        <div className="w-full h-full bg-white lg:rounded-2xl overflow-hidden grid grid-cols-1 grid-rows-[56px_minmax(240px,45vh)_1fr] lg:grid-rows-1 lg:grid-cols-12">
+                            <div className="lg:hidden h-14 px-3 border-b border-gray-200 flex items-center justify-between bg-white">
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openPreviousPost();
+                                        }}
+                                        disabled={!hasPreviousPost}
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center ${hasPreviousPost ? 'text-gray-800 hover:bg-gray-100' : 'text-gray-300 cursor-not-allowed'}`}
+                                        aria-label="Pulse anterior"
+                                    >
+                                        <Icon name="chevron_left" size="sm" />
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            openNextPost();
+                                        }}
+                                        disabled={!hasNextPost}
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center ${hasNextPost ? 'text-gray-800 hover:bg-gray-100' : 'text-gray-300 cursor-not-allowed'}`}
+                                        aria-label="Próximo pulse"
+                                    >
+                                        <Icon name="chevron_right" size="sm" />
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActivePostId(null);
+                                    }}
+                                    className="w-10 h-10 rounded-full flex items-center justify-center text-gray-800 hover:bg-gray-100"
+                                    aria-label="Fechar lightbox"
+                                    title="Fechar"
+                                >
+                                    <Icon name="close" size="md" />
+                                </button>
+                            </div>
+                            <div className={`${isLightboxSidebarCollapsed ? 'lg:col-span-12' : 'lg:col-span-8'} relative bg-black flex items-center justify-center min-h-[240px]`}>
                                 {renderLightboxMedia(activePost)}
                             </div>
-                            {!isLightboxSidebarCollapsed && (
-                            <div className="lg:col-span-4 flex flex-col h-full">
+                            <div className={`${isLightboxSidebarCollapsed ? 'hidden lg:flex' : 'flex'} lg:col-span-4 flex-col min-h-0 h-full`}>
                                 <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <img src={USERS[activePost.userId]?.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
@@ -1414,7 +1728,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     </div>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                                     <div>
                                         <p className={`text-sm text-gray-800 whitespace-pre-wrap ${isLightboxDescriptionExpanded ? '' : 'line-clamp-4'}`}>
                                             <span className="font-semibold mr-1">{USERS[activePost.userId]?.name}</span>
@@ -1471,7 +1785,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     </div>
                                 </div>
 
-                                <div className="border-t border-gray-200 px-3 pt-2 pb-1 flex items-center justify-between">
+                                <div className="px-3 pt-2 pb-1 flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div ref={lightboxRatingMenuRef} className="relative">
                                             <button
@@ -1549,6 +1863,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                         <Icon name="bookmark" size="md" filled={!!activePost.isBookmarked} />
                                     </button>
                                 </div>
+                                <div className="border-t border-gray-200"></div>
                                 <form
                                     className="p-3 pt-2"
                                     onSubmit={(e) => {
@@ -1573,7 +1888,6 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     </div>
                                 </form>
                             </div>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -1588,6 +1902,20 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             <style>{`
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+                @keyframes slingshotLeft {
+                    0% { transform: translateX(-10px) scale(0.9); opacity: 0.75; }
+                    50% { transform: translateX(10px) scale(1.05); opacity: 1; }
+                    100% { transform: translateX(-10px) scale(0.9); opacity: 0.75; }
+                }
+                @keyframes slingshotRight {
+                    0% { transform: translateX(10px) scale(0.9); opacity: 0.75; }
+                    50% { transform: translateX(-10px) scale(1.05); opacity: 1; }
+                    100% { transform: translateX(10px) scale(0.9); opacity: 0.75; }
+                }
+                .slingshot-loader { position: relative; width: 56px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+                .slingshot-dot { width: 12px; height: 12px; border-radius: 9999px; background: #7c3aed; position: absolute; box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35); }
+                .slingshot-dot-left { left: 10px; animation: slingshotLeft 0.9s ease-in-out infinite; }
+                .slingshot-dot-right { right: 10px; animation: slingshotRight 0.9s ease-in-out infinite; }
             `}</style>
         </div>
     );

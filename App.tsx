@@ -10,6 +10,7 @@ import { View } from './types';
 
 const App: React.FC = () => {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>('social');
   const [isRoadmapOpen, setIsRoadmapOpen] = useState(false);
   
@@ -32,10 +33,19 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: View) => {
     setCurrentView(view);
+    setMobileSidebarOpen(false);
     // Ao mudar de módulo, resetamos o modo de visualização de cursos para o padrão
     if (view === 'cursos') {
       setCourseViewMode('list');
     }
+  };
+
+  const handleToggleSidebar = () => {
+    if (window.innerWidth < 1024) {
+      setMobileSidebarOpen((prev) => !prev);
+      return;
+    }
+    setSidebarCollapsed((prev) => !prev);
   };
 
   // Keyboard Shortcuts Handler
@@ -100,21 +110,41 @@ const App: React.FC = () => {
   return (
     <>
       <div className="flex h-screen bg-white text-gray-800 transition-colors duration-300">
-        <Sidebar 
-          isCollapsed={isSidebarCollapsed} 
-          onToggle={() => setSidebarCollapsed(prev => !prev)} 
-          currentView={currentView}
-          onViewChange={handleViewChange}
-        />
+        <div className="hidden lg:flex">
+          <Sidebar
+            isCollapsed={isSidebarCollapsed}
+            onToggle={() => setSidebarCollapsed((prev) => !prev)}
+            currentView={currentView}
+            onViewChange={handleViewChange}
+          />
+        </div>
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header 
-            onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} 
+            onToggleSidebar={handleToggleSidebar}
           />
           <main className="flex-1 overflow-hidden bg-gray-50 flex flex-col">
              {renderContent()}
           </main>
         </div>
       </div>
+
+      {isMobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            className="absolute inset-0 bg-black/45"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Fechar menu"
+          />
+          <div className="relative h-full pointer-events-none">
+            <Sidebar
+              isCollapsed={false}
+              onToggle={() => setMobileSidebarOpen(false)}
+              currentView={currentView}
+              onViewChange={handleViewChange}
+            />
+          </div>
+        </div>
+      )}
       
       <StoryMappingModal 
         isOpen={isRoadmapOpen}

@@ -102,6 +102,7 @@ export const POSTS: Post[] = [
     text: 'Imagem de destaque do canal com boas praticas de frontend. Neste pulse reunimos um passo a passo completo para estruturar componentes reutilizaveis, organizar tokens visuais, padronizar estados de carregamento e erro, e melhorar consistencia entre telas web e mobile. Tambem incluimos exemplos de acessibilidade, performance e governanca de design system para times distribuidos.',
     timestamp: '2 horas atrás',
     imageUrl: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?q=80&w=800&auto=format&fit=crop',
+    mediaLayout: 'horizontal',
     rating: 4.6,
     ratingVotes: 48,
     userRating: 0,
@@ -320,6 +321,23 @@ export const POSTS: Post[] = [
     userRating: 0,
     likes: 19,
     commentCount: 2,
+    isLiked: false,
+    comments: []
+  },
+  {
+    id: 'post-13',
+    userId: 'user-2',
+    channelId: 'channel-5',
+    contentType: 'IMAGE',
+    text: 'Exemplo de pulse de imagem em formato vertical para validar diferentes proporcoes no feed social e testar a leitura visual em telas menores.',
+    timestamp: '6 dias atrás',
+    imageUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=800&auto=format&fit=crop',
+    mediaLayout: 'vertical',
+    rating: 4.1,
+    ratingVotes: 17,
+    userRating: 0,
+    likes: 13,
+    commentCount: 0,
     isLiked: false,
     comments: []
   }

@@ -55,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, current
 
   return (
     <aside
-      className={`bg-[#6236BF] text-white px-2 py-3 flex flex-col items-center transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-[112px]'}`}
+      className={`pointer-events-auto bg-[#6236BF] text-white px-2 py-3 flex flex-col items-center transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-[112px]'}`}
       aria-label="Main Navigation"
     >
       <div className="h-20 shrink-0 flex items-center justify-center w-full">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Icon } from '../Icon';
 import { StoryMapData, Story, Link } from './types';
 
@@ -343,35 +343,11 @@ const WebSimulationScreen: React.FC<{
    );
 };
 
-// --- TYPES & HELPERS FOR STEPS ---
-type FlowStepId = 'whatsapp' | 'question' | 'result';
-interface SimulationStep {
-    id: FlowStepId;
-    label: string;
-    icon: string;
-}
-
-const getSimulationSteps = (flowType: 'qualitative' | 'quantitative' | 'evaluation' | 'nps-5' | 'nps-10'): SimulationStep[] => {
-    return [
-        { id: 'whatsapp', label: '1. Notificação (WhatsApp)', icon: 'chat' },
-        { id: 'question', label: '2. Resposta (Navegador)', icon: 'web' },
-        { id: 'result', label: '3. Conclusão (Feedback)', icon: 'check_circle' }
-    ];
-};
-
 export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, onClose, data, onInternalLinkClick }) => {
-  const [viewMode, setViewMode] = useState<'map' | 'preview'>('map');
-  const [selectedStory, setSelectedStory] = useState<Story | null>(null);
-  
-  // Navigation State
-  const [activeStepId, setActiveStepId] = useState<FlowStepId>('whatsapp');
-
-  // Prevent background scroll and reset view on open
+  // Prevent background scroll
   useEffect(() => {
     if (isOpen) {
         document.body.style.overflow = 'hidden';
-        setViewMode('map');
-        setActiveStepId('whatsapp');
     } else {
         document.body.style.overflow = 'unset';
     }
@@ -389,48 +365,6 @@ export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, on
     }
   };
 
-  // Logic to determine simulation type
-  const getSimulationType = (story: Story | null) => {
-      if (!story) return 'qualitative';
-      const title = story.title.toLowerCase();
-      // NPS Check
-      if (title.includes('nps')) {
-          if (title.includes('1-5')) return 'nps-5';
-          return 'nps-10'; // Default 1-10 if not specified or specified
-      }
-      if (title.includes('avaliação') || title.includes('avaliativo')) return 'evaluation';
-      if (title.includes('quantitativa')) return 'quantitative';
-      return 'qualitative'; // Default
-  };
-
-  // Filter for Consumption Flow stories
-  const getConsumptionStories = (data: StoryMapData) => {
-     const stories: Story[] = [];
-     data.releases.forEach(r => {
-        // Filter: Only "Consumo" or "Aluno" releases
-        if (r.title.toLowerCase().includes('consumo') || r.title.toLowerCase().includes('aluno')) {
-            data.activities.forEach(a => {
-                const s = data.stories[r.id]?.[a.id];
-                if (s) stories.push(...s);
-            });
-        }
-     });
-     return stories;
-  };
-
-  const consumptionStories = data ? getConsumptionStories(data) : [];
-  const simulationType = getSimulationType(selectedStory);
-  const waMode = simulationType === 'evaluation' ? 'evaluation' : (simulationType === 'nps-5' || simulationType === 'nps-10') ? 'nps' : 'survey';
-  
-  const currentSteps = getSimulationSteps(simulationType);
-
-  const handleSelectStory = (story: Story) => {
-      if (selectedStory?.id !== story.id) {
-        setSelectedStory(story);
-        setActiveStepId('whatsapp'); // Reset to start
-      }
-  };
-
   return (
     <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center animate-fadeIn p-4 sm:p-8" onClick={onClose}>
       <div 
@@ -440,33 +374,16 @@ export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, on
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white flex-shrink-0">
           <div className="flex items-center gap-3">
-             <div className={`w-10 h-10 ${viewMode === 'preview' ? 'bg-indigo-100 text-indigo-600' : 'bg-purple-100 text-purple-600'} rounded-lg flex items-center justify-center`}>
-                <Icon name={viewMode === 'preview' ? "smartphone" : "map"} />
+             <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center">
+                <Icon name="map" />
              </div>
              <div>
-                <h2 className="text-xl font-bold text-gray-900">{viewMode === 'preview' ? 'Navegação' : (data?.title || 'Story Map')}</h2>
-                <p className="text-sm text-gray-500">{viewMode === 'preview' ? 'Simulação da experiência do usuário (WhatsApp > Web)' : 'Visão geral do produto e entregas'}</p>
+                <h2 className="text-xl font-bold text-gray-900">{data?.title || 'Story Map'}</h2>
+                <p className="text-sm text-gray-500">Visão geral do produto e entregas</p>
              </div>
           </div>
           
-          <div className="flex items-center gap-3">
-              {viewMode === 'map' ? (
-                  <button 
-                    onClick={() => { setViewMode('preview'); setActiveStepId('whatsapp'); setSelectedStory(null); }}
-                    className="h-10 px-4 border border-purple-600 text-purple-600 rounded-full text-sm font-semibold hover:bg-purple-50 flex items-center gap-2 transition-colors"
-                  >
-                      <Icon name="visibility" size="sm" />
-                      <span>Visualizar</span>
-                  </button>
-              ) : (
-                  <button 
-                    onClick={() => setViewMode('map')}
-                    className="h-10 px-4 border border-gray-300 text-gray-700 rounded-full text-sm font-semibold hover:bg-gray-100 flex items-center gap-2 transition-colors"
-                  >
-                      <Icon name="arrow_back" size="sm" />
-                      <span>Voltar ao Mapa</span>
-                  </button>
-              )}
+          <div className="flex items-center">
               <button 
                 onClick={onClose}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
@@ -478,126 +395,37 @@ export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, on
 
         {/* Content Area */}
         {data ? (
-            viewMode === 'map' ? (
-                // --- MAP VIEW ---
-                <div className="flex-1 overflow-auto bg-[#f8f9fa] p-6">
-                    <div className="flex gap-6 min-w-max">
-                        {data.activities.map(activity => (
-                            <div key={activity.id} className="w-80 flex-shrink-0 flex flex-col gap-4">
-                                {/* Header Card */}
-                                <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center uppercase font-bold text-gray-800 flex flex-col items-center justify-center min-h-[80px]">
-                                    {activity.title}
-                                    {activity.subtitle && <div className="text-xs text-gray-500 mt-1 font-normal normal-case">{activity.subtitle}</div>}
-                                </div>
-                                
-                                {/* Stories grouped by Release */}
-                                <div className="flex-1">
-                                    {data.releases.map(release => {
-                                        const stories = data.stories[release.id]?.[activity.id];
-                                        if (!stories || stories.length === 0) return null;
-                                        return (
-                                            <div key={release.id} className="mb-6">
-                                                <h5 className="text-xs font-bold text-purple-600 uppercase mb-2 pl-1">{release.title}</h5>
-                                                <div className="flex flex-col gap-2">
-                                                    {stories.map(story => (
-                                                        <StoryCard key={story.id} story={story} onLinkClick={handleLinkClick} />
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )
-                                    })}
-                                </div>
+            <div className="flex-1 overflow-auto bg-[#f8f9fa] p-6">
+                <div className="flex gap-6 min-w-max">
+                    {data.activities.map(activity => (
+                        <div key={activity.id} className="w-80 flex-shrink-0 flex flex-col gap-4">
+                            {/* Header Card */}
+                            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center uppercase font-bold text-gray-800 flex flex-col items-center justify-center min-h-[80px]">
+                                {activity.title}
+                                {activity.subtitle && <div className="text-xs text-gray-500 mt-1 font-normal normal-case">{activity.subtitle}</div>}
                             </div>
-                        ))}
-                    </div>
-                </div>
-            ) : (
-                // --- PREVIEW VIEW (Mobile Mockup) ---
-                <div className="flex-1 flex overflow-hidden">
-                    {/* Sidebar Navigation */}
-                    <aside className="w-1/3 border-r border-gray-200 flex flex-col bg-white">
-                        <div className="p-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Fluxos de Consumo</h3>
-                            <p className="text-sm text-gray-500">Selecione para simular o fluxo</p>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-2">
-                             {consumptionStories.length > 0 ? (
-                                 <div className="space-y-1">
-                                    {consumptionStories.map(story => {
-                                        const isSelected = selectedStory?.id === story.id;
-                                        return (
-                                            <div key={story.id} className="mb-2">
-                                                <button
-                                                    onClick={() => handleSelectStory(story)}
-                                                    className={`w-full text-left p-3 flex items-center gap-3 transition-colors rounded-lg mx-1 max-w-[98%] ${isSelected ? 'bg-purple-600 text-white shadow-md' : 'hover:bg-gray-50 text-gray-700'}`}
-                                                >
-                                                    <Icon name={getSimulationType(story).includes('nps') ? 'speed' : 'play_arrow'} size="sm" className={isSelected ? 'text-white' : 'text-gray-300'} />
-                                                    <span className="text-sm font-medium truncate">{story.title}</span>
-                                                </button>
-                                                
-                                                {/* Expanded Steps */}
-                                                {isSelected && (
-                                                    <div className="ml-5 pl-4 border-l-2 border-purple-100 mt-2 space-y-1 mb-3 animate-fadeIn">
-                                                        {currentSteps.map((step) => {
-                                                            const isActiveStep = activeStepId === step.id;
-                                                            return (
-                                                                <button
-                                                                    key={step.id}
-                                                                    onClick={() => setActiveStepId(step.id)}
-                                                                    className={`w-full text-left px-3 py-2 flex items-center gap-2 rounded-md transition-colors text-xs font-medium ${isActiveStep ? 'bg-purple-50 text-purple-700' : 'text-gray-500 hover:text-purple-600'}`}
-                                                                >
-                                                                    <div className={`w-2 h-2 rounded-full ${isActiveStep ? 'bg-purple-600' : 'bg-gray-300'}`}></div>
-                                                                    {step.label}
-                                                                </button>
-                                                            )
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                 </div>
-                             ) : (
-                                <p className="p-4 text-center text-gray-500 text-sm">Nenhum fluxo de consumo encontrado para simulação.</p>
-                             )}
-                        </div>
-                    </aside>
-
-                    {/* Mobile Mockup Area */}
-                    <main className="w-2/3 flex items-center justify-center bg-gray-100 p-4">
-                         <div className="relative bg-gray-800 w-full max-w-[375px] h-full max-h-[750px] rounded-[40px] shadow-2xl p-3 flex flex-col border-[4px] border-gray-700 ring-4 ring-gray-300">
-                            {/* Notch */}
-                            <div className="bg-black w-24 h-5 rounded-b-xl mx-auto mb-2 flex-shrink-0 absolute left-1/2 -translate-x-1/2 top-4 z-50"></div>
                             
-                            <div className="bg-white flex-1 rounded-[25px] flex flex-col overflow-hidden relative">
-                                {selectedStory ? (
-                                    activeStepId === 'whatsapp' ? (
-                                        <WhatsAppScreen 
-                                            type={waMode} 
-                                            onNextStep={() => setActiveStepId('question')} 
-                                        />
-                                    ) : (
-                                        <WebSimulationScreen 
-                                            step={activeStepId === 'result' ? 'result' : 'question'}
-                                            flowType={simulationType}
-                                            onNextStep={() => setActiveStepId('result')}
-                                            onBackToWhatsapp={() => setActiveStepId('whatsapp')}
-                                        />
-                                    )
-                                ) : (
-                                    <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 p-8 text-center">
-                                        <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
-                                            <Icon name="touch_app" size="lg" className="opacity-50" />
+                            {/* Stories grouped by Release */}
+                            <div className="flex-1">
+                                {data.releases.map(release => {
+                                    const stories = data.stories[release.id]?.[activity.id];
+                                    if (!stories || stories.length === 0) return null;
+                                    return (
+                                        <div key={release.id} className="mb-6">
+                                            <h5 className="text-xs font-bold text-purple-600 uppercase mb-2 pl-1">{release.title}</h5>
+                                            <div className="flex flex-col gap-2">
+                                                {stories.map(story => (
+                                                    <StoryCard key={story.id} story={story} onLinkClick={handleLinkClick} />
+                                                ))}
+                                            </div>
                                         </div>
-                                        <h3 className="text-gray-900 font-semibold mb-2">Simulador de Fluxo</h3>
-                                        <p className="text-sm">Selecione uma história na lista ao lado para iniciar a simulação do fluxo WhatsApp &gt; Smartzap.</p>
-                                    </div>
-                                )}
+                                    )
+                                })}
                             </div>
                         </div>
-                    </main>
+                    ))}
                 </div>
-            )
+            </div>
         ) : (
              <div className="flex-1 flex items-center justify-center text-gray-400">
                 <p>Nenhum dado encontrado para o Story Map.</p>

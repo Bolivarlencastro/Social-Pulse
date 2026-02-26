@@ -343,7 +343,11 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
   const isVideoEmbed = !!post.embed && (post.embed.provider === 'youtube' || post.embed.provider === 'vimeo');
   const isInlineVideo = normalizedContentType === 'VIDEO' && (isVideoEmbed || !!post.mediaUrl);
   const isInlineAudio = normalizedContentType === 'PODCAST' && !!post.mediaUrl;
+  const isImagePulse = normalizedContentType === 'IMAGE';
+  const shouldShowFloatingPlay = !['VIDEO', 'PODCAST', 'IMAGE'].includes(normalizedContentType);
   const inlineVideoLayout = post.mediaLayout === 'vertical' ? 'vertical' : 'horizontal';
+  const inlineImageLayout = post.mediaLayout === 'vertical' ? 'vertical' : post.mediaLayout === 'horizontal' ? 'horizontal' : 'square';
+  const imageAspectClass = inlineImageLayout === 'vertical' ? 'aspect-[4/5]' : inlineImageLayout === 'horizontal' ? 'aspect-[16/9]' : 'aspect-square';
 
   const renderInlineFeedMedia = () => {
       if (isInlineVideo) {
@@ -373,19 +377,26 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
 
       if (isInlineAudio) {
           return (
-              <div className="w-full border-y border-gray-200 bg-gray-50 px-4 py-5">
-                  <div className="max-w-2xl mx-auto space-y-3">
+              <div className="w-full border-y border-gray-200">
+                  <div className="relative aspect-square w-full overflow-hidden">
                       {post.imageUrl && !hasImageError ? (
-                          <div className="aspect-square w-full max-w-[280px] rounded-xl overflow-hidden border border-gray-200 bg-white">
-                              <img src={post.imageUrl} alt="Capa do podcast" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
-                          </div>
+                          <img
+                              src={post.imageUrl}
+                              alt="Capa do podcast"
+                              className="absolute inset-0 w-full h-full object-cover"
+                              onError={() => setHasImageError(true)}
+                          />
                       ) : (
-                          <EmptyCover className="aspect-square w-full max-w-[280px] rounded-xl" />
+                          <EmptyCover className="absolute inset-0 w-full h-full" />
                       )}
-                      <audio className="w-full" controls preload="metadata">
-                          {post.mediaUrl && <source src={post.mediaUrl} />}
-                          Seu navegador não suporta áudio.
-                      </audio>
+                      <div className="absolute inset-0 flex items-center justify-center px-4">
+                          <div className="w-full max-w-md rounded-xl bg-white px-4 py-3 shadow-lg">
+                              <audio className="w-full" controls preload="metadata">
+                                  {post.mediaUrl && <source src={post.mediaUrl} />}
+                                  Seu navegador não suporta áudio.
+                              </audio>
+                          </div>
+                      </div>
                   </div>
               </div>
           );
@@ -414,7 +425,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
             )}
 
             <div className="relative z-10 mt-auto flex flex-col gap-1">
-                <p className="text-white font-bold text-xs sm:text-base leading-tight line-clamp-2">{getGridTitle()}</p>
+                <p className="text-white font-bold text-xs sm:text-base leading-tight truncate">{getGridTitle()}</p>
                 <p className="text-white/90 text-[10px] sm:text-xs truncate">{displayedChannelName}</p>
                 <div className="h-[2px] w-full bg-white/35 rounded-full mt-1">
                     <div className="h-full w-0 bg-white rounded-full" />
@@ -453,21 +464,21 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
     <div className="bg-white rounded-lg border border-gray-200">
       {/* Post Header */}
       <div className="flex items-center justify-between p-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
               <img
                   className="h-10 w-10 rounded-full object-cover"
                   src={author.avatarUrl}
                   alt={author.name}
               />
-              <div className="flex flex-col">
+              <div className="flex flex-col min-w-0">
                   {channel && (
-                      <div className="text-sm font-semibold text-gray-800">
+                      <div className="text-sm font-semibold text-gray-800 min-w-0">
                           {onChannelClick ? (
-                              <button onClick={() => onChannelClick(channel.id)} className="hover:underline">
+                              <button onClick={() => onChannelClick(channel.id)} className="block w-full max-w-full truncate text-left hover:underline">
                                   {displayedChannelName}
                               </button>
                           ) : (
-                              <span>{displayedChannelName}</span>
+                              <span className="block w-full max-w-full truncate">{displayedChannelName}</span>
                           )}
                       </div>
                   )}
@@ -483,7 +494,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
               {channel && (
                   <button
                       onClick={() => onToggleChannelSubscription?.(channel.id)}
-                      className={`px-2 py-1 text-sm font-semibold rounded-md transition-colors focus:outline-none ${isChannelSubscribed ? 'text-green-700 hover:bg-green-50' : 'text-purple-700 hover:bg-purple-50'}`}
+                      className="px-1 py-1 text-sm font-semibold text-gray-700 transition-colors hover:text-purple-700 focus:outline-none"
                   >
                       {isChannelSubscribed ? 'Inscrito' : 'Inscrever-se'}
                   </button>
@@ -543,23 +554,27 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
       ) : (
           post.imageUrl && !hasImageError ? (
               <div className="w-full bg-gray-100 border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
-                  <div className="aspect-square w-full">
+                  <div className={`${isImagePulse ? imageAspectClass : 'aspect-square'} w-full`}>
                       <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
                   </div>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
-                          <Icon name="play_arrow" size="md" />
+                  {shouldShowFloatingPlay && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
+                              <Icon name="play_arrow" size="md" />
+                          </div>
                       </div>
-                  </div>
+                  )}
               </div>
           ) : (
               <div className="w-full border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
-                  <EmptyCover className="aspect-square w-full" />
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
-                          <Icon name="play_arrow" size="md" />
+                  <EmptyCover className={`${isImagePulse ? imageAspectClass : 'aspect-square'} w-full`} />
+                  {shouldShowFloatingPlay && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                          <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
+                              <Icon name="play_arrow" size="md" />
+                          </div>
                       </div>
-                  </div>
+                  )}
               </div>
           )
       )}
