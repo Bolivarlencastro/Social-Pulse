@@ -248,6 +248,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
   const channel = CHANNELS_MAP[post.channelId];
   const displayedChannelName = channelName || channel?.name || 'Canal';
   const currentUser = USERS['user-4']; // Assuming current user
+  const isBookmarked = !!post.isBookmarked;
   
   const [showComments, setShowComments] = useState(false);
   const [replyingTo, setReplyingTo] = useState('');
@@ -581,4 +582,3 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
     </div>
   );
 };
-  const isBookmarked = !!post.isBookmarked;
