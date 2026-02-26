@@ -4,6 +4,7 @@ import { USERS, CHANNELS_MAP, KONQUEST_DEFAULT_COVER_IMAGE } from '../constants'
 import { Icon } from './Icon';
 import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react';
 
+const COMMENT_CHAR_LIMIT = 500;
 
 interface PostCardProps {
   post: Post;
@@ -41,14 +42,15 @@ const CommentForm = ({ onSubmit, currentUser, placeholder, autoFocus = false }: 
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleEmojiClick = (emojiObject: { emoji: string }) => {
-        setCommentText(prev => prev + emojiObject.emoji);
+        setCommentText(prev => (prev + emojiObject.emoji).slice(0, COMMENT_CHAR_LIMIT));
         inputRef.current?.focus();
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (commentText.trim()) {
-            onSubmit(commentText.trim());
+        const normalizedText = commentText.trim();
+        if (normalizedText) {
+            onSubmit(normalizedText.slice(0, COMMENT_CHAR_LIMIT));
             setCommentText('');
             setShowPicker(false);
         }
@@ -85,7 +87,8 @@ const CommentForm = ({ onSubmit, currentUser, placeholder, autoFocus = false }: 
                     ref={inputRef}
                     type="text"
                     value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
+                    onChange={(e) => setCommentText(e.target.value.slice(0, COMMENT_CHAR_LIMIT))}
+                    maxLength={COMMENT_CHAR_LIMIT}
                     placeholder={placeholder}
                     className="w-full bg-gray-100 rounded-full py-2 pl-4 pr-10 text-sm border-transparent focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
@@ -107,6 +110,9 @@ const CommentForm = ({ onSubmit, currentUser, placeholder, autoFocus = false }: 
                         />
                     </div>
                 )}
+                <p className={`mt-1 text-right text-[11px] ${commentText.length >= COMMENT_CHAR_LIMIT ? 'text-amber-600' : 'text-gray-400'}`}>
+                    {commentText.length}/{COMMENT_CHAR_LIMIT}
+                </p>
             </div>
         </form>
     );
@@ -139,7 +145,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, allComments, onAddCo
                 <div className="bg-gray-100 rounded-lg px-3 py-2 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                         <span className="font-semibold text-sm text-gray-800">{author.name}</span>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{comment.text}</p>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">{comment.text}</p>
                     </div>
                     {comment.userId === currentUser.id && (onEditComment || onDeleteComment) && (
                         <details className="relative shrink-0">
@@ -218,26 +224,33 @@ const SimpleCommentForm: React.FC<{ onSubmit: (text: string) => void }> = ({ onS
     
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (commentText.trim()) {
-            onSubmit(commentText.trim());
+        const normalizedText = commentText.trim();
+        if (normalizedText) {
+            onSubmit(normalizedText.slice(0, COMMENT_CHAR_LIMIT));
             setCommentText('');
         }
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
-            <input
-                type="text"
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Adicione um comentário..."
-                className="w-full bg-transparent text-sm placeholder-gray-500 focus:outline-none"
-            />
-            {commentText.trim() && (
-                <button type="submit" className="text-sm font-semibold text-purple-600 hover:text-purple-800">
-                    Publicar
-                </button>
-            )}
+        <form onSubmit={handleSubmit} className="space-y-1">
+            <div className="flex items-center gap-2">
+                <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value.slice(0, COMMENT_CHAR_LIMIT))}
+                    maxLength={COMMENT_CHAR_LIMIT}
+                    placeholder="Adicione um comentário..."
+                    className="w-full bg-transparent text-sm placeholder-gray-500 focus:outline-none"
+                />
+                {commentText.trim() && (
+                    <button type="submit" className="text-sm font-semibold text-purple-600 hover:text-purple-800">
+                        Publicar
+                    </button>
+                )}
+            </div>
+            <p className={`text-right text-[11px] ${commentText.length >= COMMENT_CHAR_LIMIT ? 'text-amber-600' : 'text-gray-400'}`}>
+                {commentText.length}/{COMMENT_CHAR_LIMIT}
+            </p>
         </form>
     );
 };

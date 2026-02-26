@@ -33,6 +33,7 @@ type CreateSubtype =
 type EdgeCaseKey = 'emptyDataset' | 'missingCover' | 'longContent' | 'largeVolume';
 
 type EdgeCaseState = Record<EdgeCaseKey, boolean>;
+const COMMENT_CHAR_LIMIT = 500;
 
 const CREATE_MAIN_OPTIONS: Array<{ type: Exclude<CreateMainType, null>; label: string; icon: string }> = [
     { type: 'FILE', label: 'Arquivo', icon: 'file_upload' },
@@ -254,10 +255,13 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     };
 
     const handleAddComment = (postId: string, commentText: string, parentId?: string) => {
+        const normalizedCommentText = commentText.trim().slice(0, COMMENT_CHAR_LIMIT);
+        if (!normalizedCommentText) return;
+
         const newComment: Comment = {
             id: `c-${Date.now()}`,
             userId: 'user-4',
-            text: commentText,
+            text: normalizedCommentText,
             timestamp: 'Agora mesmo',
             parentId: parentId
         };
@@ -296,6 +300,10 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
 
         const updatedText = window.prompt('Editar comentário', comment.text);
         if (!updatedText || !updatedText.trim()) return;
+        if (updatedText.trim().length > COMMENT_CHAR_LIMIT) {
+            window.alert(`Comentários podem ter no máximo ${COMMENT_CHAR_LIMIT} caracteres.`);
+            return;
+        }
 
         setPosts(prev => prev.map(p => {
             if (p.id !== postId) return p;
@@ -1747,7 +1755,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div className="space-y-3">
                                         {activePost.comments.map(comment => (
                                             <div key={comment.id} className="text-sm text-gray-800 flex items-start justify-between gap-2">
-                                                <div>
+                                                <div className="min-w-0 break-words">
                                                     <span className="font-semibold mr-1">{USERS[comment.userId]?.name}</span>
                                                     <span>{comment.text}</span>
                                                 </div>
@@ -1868,8 +1876,9 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     className="p-3 pt-2"
                                     onSubmit={(e) => {
                                         e.preventDefault();
-                                        if (!lightboxCommentText.trim()) return;
-                                        handleAddComment(activePost.id, lightboxCommentText.trim());
+                                        const normalizedCommentText = lightboxCommentText.trim();
+                                        if (!normalizedCommentText) return;
+                                        handleAddComment(activePost.id, normalizedCommentText);
                                         setLightboxCommentText('');
                                     }}
                                 >
@@ -1878,7 +1887,8 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                             ref={lightboxCommentInputRef}
                                             type="text"
                                             value={lightboxCommentText}
-                                            onChange={(e) => setLightboxCommentText(e.target.value)}
+                                            onChange={(e) => setLightboxCommentText(e.target.value.slice(0, COMMENT_CHAR_LIMIT))}
+                                            maxLength={COMMENT_CHAR_LIMIT}
                                             placeholder="Adicione um comentário..."
                                             className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                                         />
@@ -1886,6 +1896,9 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                             Publicar
                                         </button>
                                     </div>
+                                    <p className={`mt-1 text-right text-[11px] ${lightboxCommentText.length >= COMMENT_CHAR_LIMIT ? 'text-amber-600' : 'text-gray-400'}`}>
+                                        {lightboxCommentText.length}/{COMMENT_CHAR_LIMIT}
+                                    </p>
                                 </form>
                             </div>
                         </div>
