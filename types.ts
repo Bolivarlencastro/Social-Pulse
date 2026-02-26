@@ -1,6 +1,14 @@
 
 
-export type View = 'visaoGeral' | 'liderados' | 'cursos' | 'trilhas' | 'eventos' | 'canais' | 'social';
+export type View =
+  | 'visaoGeral'
+  | 'liderados'
+  | 'cursos'
+  | 'trilhas'
+  | 'eventos'
+  | 'canais'
+  | 'social'
+  | 'gestaoConteudo';
 
 export type Theme = 'light' | 'dark';
 

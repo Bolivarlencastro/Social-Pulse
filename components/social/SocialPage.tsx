@@ -10,6 +10,7 @@ import { Post, Comment, Channel } from '../../types';
 
 type SocialViewMode = 'feed' | 'management' | 'channels';
 type FeedQuickFilter = 'all' | 'featured' | 'favorites';
+type UserViewMode = 'admin' | 'user';
 type CreateMainType = 'FILE' | 'LINK' | 'QUIZ' | 'HTML' | null;
 type CreateSubtype =
     | 'VIDEO'
@@ -24,22 +25,31 @@ type CreateSubtype =
     | 'SOUNDCLOUD'
     | 'GOOGLE_DRIVE'
     | 'EXTERNAL_LINK'
-    | 'EVALUATIVE_QUIZ'
-    | 'SURVEY_QUIZ'
     | 'GENIALLY'
     | 'H5P'
+    | 'EVALUATIVE_QUIZ'
+    | 'SURVEY_QUIZ'
     | null;
 
 type EdgeCaseKey = 'emptyDataset' | 'missingCover' | 'longContent' | 'largeVolume';
 
 type EdgeCaseState = Record<EdgeCaseKey, boolean>;
 const COMMENT_CHAR_LIMIT = 500;
+const CONTENT_NAME_MAX_LENGTH = 200;
+const QUIZ_NAME_MAX_LENGTH = 100;
+const URL_REGEX = /^https?:\/\/[\w.-]+(?:\.[\w-]+)+[\w\-._~:/?#[\]@!$&'()*+,;=]+$/;
+const YOUTUBE_REGEX = /(?:youtube\.com\/\S*(?:(?:\/e(?:mbed))?\/|watch\?(?:\S*?&?v=))|youtu\.be\/)([a-zA-Z0-9_-]{6,11})/;
+const VIMEO_REGEX = /(https?:\/\/)?(www\.)?(player\.)?vimeo\.com\/(?:channels\/\w+\/|groups\/[^/]*\/videos\/|video\/)?(\d+)/;
+const SOUNDCLOUD_REGEX = /((https:\/\/)|(http:\/\/)|(www.)|(m\.)|(\s))+(soundcloud.com\/)+[a-zA-Z0-9\-.]+(\/)+[a-zA-Z0-9\-.]+/;
+const GOOGLE_DRIVE_REGEX = /((https:)?\/\/(docs.google.com)\/(presentation|document|spreadsheets)\/d\/[a-zA-Z0-9_-]+\/(.*))/;
+const GENIALLY_REGEX = /(https)?:\/\/(view\.genial\.ly\/|view\.genially\.com\/)[a-zA-Z0-9_-]+/;
+const H5P_REGEX = /(https)?:\/\/(h5p\.org\/h5p\/embed\/)[a-zA-Z0-9_-]+/;
 
 const CREATE_MAIN_OPTIONS: Array<{ type: Exclude<CreateMainType, null>; label: string; icon: string }> = [
     { type: 'FILE', label: 'Arquivo', icon: 'file_upload' },
     { type: 'LINK', label: 'Link', icon: 'link' },
     { type: 'QUIZ', label: 'Quiz', icon: 'quiz' },
-    { type: 'HTML', label: 'H5P / Genially', icon: 'html' }
+    { type: 'HTML', label: 'Ferramentas de autoria', icon: 'html' }
 ];
 
 const CREATE_SUB_OPTIONS: Record<Exclude<CreateMainType, null>, Array<{ type: Exclude<CreateSubtype, null>; label: string; icon: string }>> = {
@@ -60,8 +70,8 @@ const CREATE_SUB_OPTIONS: Record<Exclude<CreateMainType, null>, Array<{ type: Ex
         { type: 'EXTERNAL_LINK', label: 'Link externo', icon: 'language' }
     ],
     QUIZ: [
-        { type: 'EVALUATIVE_QUIZ', label: 'Quiz avaliativo', icon: 'quiz' },
-        { type: 'SURVEY_QUIZ', label: 'Quiz pesquisa', icon: 'poll' }
+        { type: 'EVALUATIVE_QUIZ', label: 'Avaliativo', icon: 'quiz' },
+        { type: 'SURVEY_QUIZ', label: 'Pesquisa', icon: 'quiz' }
     ],
     HTML: [
         { type: 'GENIALLY', label: 'Genially', icon: 'language' },
@@ -86,8 +96,11 @@ interface SocialPageProps {
 }
 
 export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed' }) => {
+    const CHANNEL_HASH_PREFIX = '#/canal/';
     const INITIAL_FEED_BATCH = 8;
     const FEED_BATCH_SIZE = 6;
+    const INITIAL_CHANNELS_BATCH = 10;
+    const CHANNELS_BATCH_SIZE = 8;
     const currentUserId = 'user-4';
     const [viewMode, setViewMode] = useState<SocialViewMode>(initialViewMode);
     const [feedDisplayMode, setFeedDisplayMode] = useState<'timeline' | 'grid'>('timeline');
@@ -96,13 +109,17 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const [channels, setChannels] = useState<Channel[]>(() => CHANNELS.map(channel => ({ ...channel, isActive: channel.isActive ?? true })));
     const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [channelInternalTab, setChannelInternalTab] = useState<'pulses' | 'discussion'>('pulses');
+    const [channelDiscussionText, setChannelDiscussionText] = useState('');
     const [activePostId, setActivePostId] = useState<string | null>(null);
+    const [shouldFocusLightboxComment, setShouldFocusLightboxComment] = useState(false);
     const [isLightboxSidebarCollapsed, setIsLightboxSidebarCollapsed] = useState(false);
     const [lightboxCommentText, setLightboxCommentText] = useState('');
     const [isLightboxDescriptionExpanded, setIsLightboxDescriptionExpanded] = useState(false);
     const [isLightboxRatingMenuOpen, setIsLightboxRatingMenuOpen] = useState(false);
     const [lightboxActionToastMessage, setLightboxActionToastMessage] = useState<string | null>(null);
     const [failedChannelCovers, setFailedChannelCovers] = useState<Record<string, boolean>>({});
+    const [failedDiscoveryThumbs, setFailedDiscoveryThumbs] = useState<Record<string, boolean>>({});
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [createMainType, setCreateMainType] = useState<CreateMainType>(null);
     const [createSubtype, setCreateSubtype] = useState<CreateSubtype>(null);
@@ -110,6 +127,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const [createName, setCreateName] = useState('');
     const [createDescription, setCreateDescription] = useState('');
     const [createExternalUrl, setCreateExternalUrl] = useState('');
+    const [createCoverImageUrl, setCreateCoverImageUrl] = useState('');
     const [createChannelId, setCreateChannelId] = useState<string>(() => CHANNELS[0]?.id || '');
     const [createDuration, setCreateDuration] = useState<number>(60);
     const [edgeCases, setEdgeCases] = useState<EdgeCaseState>({
@@ -118,17 +136,24 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         longContent: false,
         largeVolume: false
     });
+    const [userViewMode, setUserViewMode] = useState<UserViewMode>('admin');
     const [isEdgeMenuOpen, setIsEdgeMenuOpen] = useState(false);
     const [isEdgeHotspotActive, setIsEdgeHotspotActive] = useState(false);
     const [isTouchDevice, setIsTouchDevice] = useState(false);
+    const [isCoverDragOver, setIsCoverDragOver] = useState(false);
     const [loadedFeedCount, setLoadedFeedCount] = useState(INITIAL_FEED_BATCH);
     const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
+    const [loadedChannelsCount, setLoadedChannelsCount] = useState(INITIAL_CHANNELS_BATCH);
+    const [isLoadingMoreChannels, setIsLoadingMoreChannels] = useState(false);
     const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+    const coverUploadInputRef = React.useRef<HTMLInputElement | null>(null);
     const lightboxRatingMenuRef = React.useRef<HTMLDivElement | null>(null);
     const lightboxCommentInputRef = React.useRef<HTMLInputElement | null>(null);
     const edgeMenuRef = React.useRef<HTMLDivElement | null>(null);
     const feedSentinelRef = React.useRef<HTMLDivElement | null>(null);
+    const channelsSentinelRef = React.useRef<HTMLDivElement | null>(null);
     const feedLoadTimeoutRef = React.useRef<number | null>(null);
+    const channelsLoadTimeoutRef = React.useRef<number | null>(null);
     const socialScrollRef = React.useRef<HTMLDivElement | null>(null);
 
     const scenarioChannels = React.useMemo(() => {
@@ -208,12 +233,52 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
 
     // Update viewMode if initialViewMode prop changes
     React.useEffect(() => {
+        const hash = window.location.hash || '';
+        if (hash.startsWith(CHANNEL_HASH_PREFIX)) return;
         setViewMode(initialViewMode);
-    }, [initialViewMode]);
+    }, [CHANNEL_HASH_PREFIX, initialViewMode]);
 
     React.useEffect(() => {
         setIsTouchDevice(window.matchMedia('(hover: none)').matches);
     }, []);
+
+    React.useEffect(() => {
+        const readChannelFromHash = () => {
+            const hash = window.location.hash || '';
+            if (!hash.startsWith(CHANNEL_HASH_PREFIX)) return null;
+            const raw = hash.slice(CHANNEL_HASH_PREFIX.length);
+            return raw ? decodeURIComponent(raw.split('?')[0]) : null;
+        };
+
+        const syncFromHash = () => {
+            const channelIdFromHash = readChannelFromHash();
+            if (!channelIdFromHash) return;
+            setViewMode('channels');
+            setSelectedChannel(channelIdFromHash);
+        };
+
+        syncFromHash();
+        window.addEventListener('hashchange', syncFromHash);
+        return () => window.removeEventListener('hashchange', syncFromHash);
+    }, [CHANNEL_HASH_PREFIX]);
+
+    React.useEffect(() => {
+        const currentHash = window.location.hash || '';
+        const hasChannelHash = currentHash.startsWith(CHANNEL_HASH_PREFIX);
+        const shouldPersistChannel = viewMode === 'channels' && !!selectedChannel;
+
+        if (shouldPersistChannel) {
+            const expectedHash = `${CHANNEL_HASH_PREFIX}${encodeURIComponent(selectedChannel as string)}`;
+            if (currentHash !== expectedHash) {
+                window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${expectedHash}`);
+            }
+            return;
+        }
+
+        if (hasChannelHash) {
+            window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+        }
+    }, [CHANNEL_HASH_PREFIX, selectedChannel, viewMode]);
 
     React.useEffect(() => {
         const handleOutsideClick = (event: MouseEvent) => {
@@ -276,6 +341,15 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             }
             return post;
         }));
+    };
+
+    const handleSubmitChannelDiscussion = () => {
+        const normalizedText = channelDiscussionText.trim().slice(0, COMMENT_CHAR_LIMIT);
+        if (!selectedChannel || !normalizedText) return;
+        const targetPost = selectedChannelPosts[0];
+        if (!targetPost) return;
+        handleAddComment(targetPost.id, normalizedText);
+        setChannelDiscussionText('');
     };
 
     const collectCommentIdsToRemove = (comments: Comment[], rootId: string): Set<string> => {
@@ -395,6 +469,21 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         }
     };
 
+    const handleChannelContributors = (channelId: string) => {
+        const channel = channels.find(c => c.id === channelId);
+        window.alert(`Abrir gestão de contribuidores do canal "${channel?.name || 'Canal'}".`);
+    };
+
+    const handleChannelTransfer = (channelId: string) => {
+        const channel = channels.find(c => c.id === channelId);
+        window.alert(`Abrir fluxo de transferência do canal "${channel?.name || 'Canal'}".`);
+    };
+
+    const handleChannelLinkGroup = (channelId: string) => {
+        const channel = channels.find(c => c.id === channelId);
+        window.alert(`Abrir fluxo de vinculação de grupos para "${channel?.name || 'Canal'}".`);
+    };
+
     const handleToggleChannelSubscription = (channelId: string) => {
         setChannels(prev => prev.map(channel => (
             channel.id === channelId
@@ -415,6 +504,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const channelsFilteredForList = selectedChannel
         ? channelsInSelectedCategory.filter(channel => channel.id === selectedChannel)
         : channelsInSelectedCategory;
+    const visibleChannelsForList = React.useMemo(
+        () => channelsFilteredForList.slice(0, loadedChannelsCount),
+        [channelsFilteredForList, loadedChannelsCount]
+    );
+    const hasMoreChannels = loadedChannelsCount < channelsFilteredForList.length;
     const activeChannelIds = new Set(activeChannels.map(channel => channel.id));
     const visiblePosts = scenarioPosts.filter(post => post.isActive !== false && activeChannelIds.has(post.channelId));
     const postsByCategory = selectedCategory
@@ -446,6 +540,14 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     }, [INITIAL_FEED_BATCH, displayedFeedPosts.length, feedDisplayMode, selectedChannel, selectedCategory, feedQuickFilter]);
 
     React.useEffect(() => {
+        if (userViewMode === 'admin') return;
+        setIsCreateModalOpen(false);
+        if (viewMode === 'management') {
+            setViewMode('feed');
+        }
+    }, [userViewMode, viewMode]);
+
+    React.useEffect(() => {
         if (viewMode !== 'feed' || !hasMoreFeedPosts) return;
         if (!feedSentinelRef.current || !socialScrollRef.current) return;
 
@@ -472,7 +574,41 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         return () => {
             observer.disconnect();
         };
-    }, [FEED_BATCH_SIZE, displayedFeedPosts.length, hasMoreFeedPosts, isLoadingMoreFeed, viewMode]);
+    }, [FEED_BATCH_SIZE, displayedFeedPosts.length, hasMoreFeedPosts, isLoadingMoreFeed, loadedFeedCount, viewMode]);
+
+    React.useEffect(() => {
+        setLoadedChannelsCount(Math.min(INITIAL_CHANNELS_BATCH, channelsFilteredForList.length));
+        setIsLoadingMoreChannels(false);
+    }, [INITIAL_CHANNELS_BATCH, channelsFilteredForList.length, selectedChannel, selectedCategory, viewMode]);
+
+    React.useEffect(() => {
+        if (viewMode !== 'channels' || !!selectedChannel || !hasMoreChannels) return;
+        if (!channelsSentinelRef.current || !socialScrollRef.current) return;
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                const [entry] = entries;
+                if (!entry?.isIntersecting || isLoadingMoreChannels || channelsLoadTimeoutRef.current) return;
+                setIsLoadingMoreChannels(true);
+                channelsLoadTimeoutRef.current = window.setTimeout(() => {
+                    setLoadedChannelsCount((prev) => Math.min(prev + CHANNELS_BATCH_SIZE, channelsFilteredForList.length));
+                    setIsLoadingMoreChannels(false);
+                    channelsLoadTimeoutRef.current = null;
+                }, 500);
+            },
+            {
+                root: socialScrollRef.current,
+                rootMargin: '280px 0px',
+                threshold: 0
+            }
+        );
+
+        observer.observe(channelsSentinelRef.current);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [CHANNELS_BATCH_SIZE, channelsFilteredForList.length, hasMoreChannels, isLoadingMoreChannels, loadedChannelsCount, selectedChannel, viewMode]);
 
     React.useEffect(() => {
         return () => {
@@ -480,17 +616,35 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 window.clearTimeout(feedLoadTimeoutRef.current);
                 feedLoadTimeoutRef.current = null;
             }
+            if (channelsLoadTimeoutRef.current) {
+                window.clearTimeout(channelsLoadTimeoutRef.current);
+                channelsLoadTimeoutRef.current = null;
+            }
         };
     }, []);
     const featuredPreviewPosts = React.useMemo(
-        () => [...visiblePosts].sort((a, b) => b.rating - a.rating).slice(0, 3),
+        () => [...visiblePosts].sort((a, b) => b.rating - a.rating).slice(0, 4),
         [visiblePosts]
     );
     const favoritePreviewPosts = React.useMemo(
-        () => visiblePosts.filter(post => !!post.isBookmarked).slice(0, 3),
+        () => visiblePosts.filter(post => !!post.isBookmarked).slice(0, 4),
         [visiblePosts]
     );
     const selectedChannelName = selectedChannel ? channelsMap[selectedChannel]?.name || 'Canal selecionado' : null;
+    const selectedChannelData = selectedChannel ? channelsMap[selectedChannel] : null;
+    const canManageAdminFeatures = userViewMode === 'admin';
+    const canManageSelectedChannel = canManageAdminFeatures && !!selectedChannelData && selectedChannelData.ownerId === currentUserId;
+    const canEditContributorsSelectedChannel = canManageSelectedChannel;
+    const canTransferSelectedChannel = canManageSelectedChannel;
+    const canDeleteSelectedChannel = canManageSelectedChannel;
+    const selectedChannelPosts = React.useMemo(
+        () => (selectedChannel ? visiblePosts.filter(post => post.channelId === selectedChannel) : []),
+        [selectedChannel, visiblePosts]
+    );
+    const selectedChannelDiscussionItems = React.useMemo(
+        () => selectedChannelPosts.flatMap(post => post.comments.map(comment => ({ ...comment, postId: post.id }))),
+        [selectedChannelPosts]
+    );
     const hasFilterSelection = !!selectedChannel || !!selectedCategory;
     const emptyFeedTitle = hasFilterSelection
         ? 'Nenhum pulse encontrado para este filtro'
@@ -505,6 +659,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         : feedQuickFilter === 'favorites'
             ? 'Pulses favoritos'
             : '';
+
+    React.useEffect(() => {
+        setChannelInternalTab('pulses');
+        setChannelDiscussionText('');
+    }, [selectedChannel]);
     const activePost = activePostId ? displayedFeedPosts.find(post => post.id === activePostId) || scenarioPosts.find(post => post.id === activePostId) || null : null;
     const activePostIndex = activePostId ? displayedFeedPosts.findIndex(post => post.id === activePostId) : -1;
     const hasPreviousPost = activePostIndex > 0;
@@ -513,15 +672,35 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const openPreviousPost = () => {
         if (!hasPreviousPost) return;
         setActivePostId(displayedFeedPosts[activePostIndex - 1].id);
+        setShouldFocusLightboxComment(false);
     };
 
     const openNextPost = () => {
         if (!hasNextPost) return;
         setActivePostId(displayedFeedPosts[activePostIndex + 1].id);
+        setShouldFocusLightboxComment(false);
     };
+
+    const handleOpenPost = (postId: string, options?: { focusComment?: boolean }) => {
+        setActivePostId(postId);
+        setShouldFocusLightboxComment(!!options?.focusComment);
+    };
+
+    React.useEffect(() => {
+        if (!activePostId || !shouldFocusLightboxComment) return;
+        const focusTimer = window.setTimeout(() => {
+            lightboxCommentInputRef.current?.focus();
+            setShouldFocusLightboxComment(false);
+        }, 30);
+        return () => window.clearTimeout(focusTimer);
+    }, [activePostId, shouldFocusLightboxComment]);
 
     const markChannelCoverAsFailed = (channelId: string) => {
         setFailedChannelCovers(prev => ({ ...prev, [channelId]: true }));
+    };
+
+    const markDiscoveryThumbAsFailed = (postId: string) => {
+        setFailedDiscoveryThumbs(prev => ({ ...prev, [postId]: true }));
     };
 
     const resetCreateForm = () => {
@@ -531,9 +710,13 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         setCreateName('');
         setCreateDescription('');
         setCreateExternalUrl('');
+        setCreateCoverImageUrl('');
         setCreateDuration(60);
         if (uploadInputRef.current) {
             uploadInputRef.current.value = '';
+        }
+        if (coverUploadInputRef.current) {
+            coverUploadInputRef.current.value = '';
         }
     };
 
@@ -564,6 +747,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         setCreateSubtype(null);
         setCreateFile(null);
         setCreateExternalUrl('');
+        setCreateCoverImageUrl('');
         if (uploadInputRef.current) {
             uploadInputRef.current.value = '';
         }
@@ -573,12 +757,13 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         setCreateSubtype(subtype);
         setCreateFile(null);
         setCreateExternalUrl('');
+        setCreateCoverImageUrl('');
         if (uploadInputRef.current) {
             uploadInputRef.current.value = '';
         }
 
         const accept = CREATE_ACCEPT_TYPES[subtype];
-        if (accept && uploadInputRef.current) {
+        if (accept && createMainType === 'FILE' && uploadInputRef.current) {
             uploadInputRef.current.accept = accept;
             uploadInputRef.current.click();
         }
@@ -592,6 +777,42 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             setCreateName(fileNameWithoutExtension);
         }
     };
+
+    const applyCreateCoverFile = (file: File | null) => {
+        if (!file) return;
+        const localUrl = URL.createObjectURL(file);
+        setCreateCoverImageUrl(localUrl);
+    };
+
+    const handleSelectCreateCover = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0] ?? null;
+        applyCreateCoverFile(file);
+    };
+
+    const needsSubtype = !!createMainType;
+    const isCreateDetailsStepReady = !!createMainType && (!needsSubtype || !!createSubtype);
+    const shouldShowCoverUpload = createSubtype === 'YOUTUBE'
+        || createSubtype === 'VIMEO'
+        || createSubtype === 'SOUNDCLOUD'
+        || createSubtype === 'GOOGLE_DRIVE'
+        || createSubtype === 'H5P'
+        || createSubtype === 'GENIALLY';
+
+    const isCreateNameTooLong = createName.length > (createMainType === 'QUIZ' ? QUIZ_NAME_MAX_LENGTH : CONTENT_NAME_MAX_LENGTH);
+
+    const createUrlError = React.useMemo(() => {
+        const normalizedUrl = createExternalUrl.trim();
+        if (!normalizedUrl) return '';
+
+        if (createSubtype === 'YOUTUBE' && !YOUTUBE_REGEX.test(normalizedUrl)) return 'URL inválida para YouTube';
+        if (createSubtype === 'VIMEO' && !VIMEO_REGEX.test(normalizedUrl)) return 'URL inválida para Vimeo';
+        if (createSubtype === 'SOUNDCLOUD' && !SOUNDCLOUD_REGEX.test(normalizedUrl)) return 'URL inválida para SoundCloud';
+        if (createSubtype === 'GOOGLE_DRIVE' && !GOOGLE_DRIVE_REGEX.test(normalizedUrl)) return 'URL inválida para Google Drive';
+        if (createSubtype === 'GENIALLY' && !GENIALLY_REGEX.test(normalizedUrl)) return 'URL inválida para Genially';
+        if (createSubtype === 'H5P' && !H5P_REGEX.test(normalizedUrl)) return 'URL inválida para H5P';
+        if (createSubtype === 'EXTERNAL_LINK' && !URL_REGEX.test(normalizedUrl)) return 'URL inválida';
+        return '';
+    }, [createExternalUrl, createSubtype]);
 
     const inferPostFromExternalUrl = (url: string): { contentType: string; embed?: Post['embed'] } => {
         const lower = url.toLowerCase();
@@ -652,30 +873,61 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 return 'PRESENTATION';
             case 'EXCEL':
                 return 'SPREADSHEET';
-            case 'EVALUATIVE_QUIZ':
-            case 'SURVEY_QUIZ':
-                return 'QUIZ';
             case 'GENIALLY':
                 return 'GENIALLY';
             case 'H5P':
                 return 'H5P';
+            case 'EVALUATIVE_QUIZ':
+            case 'SURVEY_QUIZ':
+                return 'QUIZ';
             default:
                 return 'TEXT';
         }
     };
 
     const canSubmitCreate = React.useMemo(() => {
-        if (!createMainType || !createSubtype || !createName.trim() || !createChannelId) return false;
+        if (!createMainType || !createName.trim() || !createChannelId || isCreateNameTooLong) return false;
+        if (needsSubtype && !createSubtype) return false;
         if (createMainType === 'FILE') return !!createFile;
-        if (createMainType === 'LINK' || createMainType === 'HTML') return !!createExternalUrl.trim();
+        if (createMainType === 'LINK' || createMainType === 'HTML') {
+            if (createMainType === 'HTML' && createDuration < 1) return false;
+            const normalizedUrl = createExternalUrl.trim();
+            if (createSubtype === 'GENIALLY') {
+                const hasValidUrl = !!normalizedUrl && !createUrlError;
+                const hasZipFile = !!createFile;
+                return hasValidUrl || hasZipFile;
+            }
+            if (!normalizedUrl || !!createUrlError) return false;
+        }
         return true;
-    }, [createMainType, createSubtype, createName, createChannelId, createFile, createExternalUrl]);
+    }, [
+        createMainType,
+        createSubtype,
+        createName,
+        createChannelId,
+        createFile,
+        createExternalUrl,
+        createDuration,
+        createUrlError,
+        isCreateNameTooLong,
+        needsSubtype
+    ]);
+
+    const selectedMainOption = createMainType ? CREATE_MAIN_OPTIONS.find(option => option.type === createMainType) : undefined;
+    const selectedSubOption = createMainType && createSubtype
+        ? CREATE_SUB_OPTIONS[createMainType]?.find(option => option.type === createSubtype)
+        : undefined;
+    const createDialogTypeLabel = selectedSubOption?.label || selectedMainOption?.label || '';
+    const createDialogPreviewKey = (createSubtype || createMainType || '').toLowerCase();
+    const createDialogPreviewGif = createDialogPreviewKey
+        ? `https://assets.keepsdev.com/gifs/gif-${createDialogPreviewKey}.gif`
+        : '';
 
     const handleSubmitCreatePulse = () => {
-        if (!canSubmitCreate || !createSubtype) return;
+        if (!canSubmitCreate) return;
 
         const createdAt = 'Agora mesmo';
-        let contentType = getContentTypeFromSubtype(createSubtype);
+        let contentType = createSubtype ? getContentTypeFromSubtype(createSubtype) : 'QUIZ';
         let imageUrl: string | undefined = undefined;
         let mediaUrl: string | undefined = undefined;
         let embed: Post['embed'] | undefined = undefined;
@@ -686,18 +938,23 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 imageUrl = localUrl;
             } else if (contentType === 'VIDEO' || contentType === 'PODCAST') {
                 mediaUrl = localUrl;
-                imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+                imageUrl = createCoverImageUrl || KONQUEST_DEFAULT_COVER_IMAGE;
             } else {
                 embed = { provider: 'file', embedUrl: localUrl };
-                imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+                imageUrl = createCoverImageUrl || KONQUEST_DEFAULT_COVER_IMAGE;
             }
+        } else if (createMainType === 'HTML' && createSubtype === 'GENIALLY' && createFile) {
+            const localUrl = URL.createObjectURL(createFile);
+            contentType = 'GENIALLY';
+            embed = { provider: 'file', embedUrl: localUrl };
+            imageUrl = createCoverImageUrl || KONQUEST_DEFAULT_COVER_IMAGE;
         } else if ((createMainType === 'LINK' || createMainType === 'HTML') && createExternalUrl.trim()) {
             const inferred = inferPostFromExternalUrl(createExternalUrl.trim());
             contentType = inferred.contentType;
             embed = inferred.embed;
-            imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+            imageUrl = createCoverImageUrl || KONQUEST_DEFAULT_COVER_IMAGE;
         } else if (createMainType === 'QUIZ') {
-            imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+            imageUrl = createCoverImageUrl || KONQUEST_DEFAULT_COVER_IMAGE;
         }
 
         const newPost: Post = {
@@ -709,7 +966,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             timestamp: createdAt,
             imageUrl,
             mediaUrl,
-            durationSeconds: createDuration,
+            durationSeconds: createMainType === 'HTML' ? createDuration * 60 : createDuration,
             embed,
             rating: 0,
             ratingVotes: 0,
@@ -922,39 +1179,37 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const renderPulseDiscoveryCards = () => (
         <>
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4">
                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
                         <Icon name="auto_awesome" size="sm" className="text-purple-600" />
                         Pulses em Destaque
                     </h3>
-                    <button
-                        onClick={() => {
-                            setFeedQuickFilter('featured');
-                            setViewMode('feed');
-                        }}
-                        className="text-sm font-semibold text-purple-600 hover:text-purple-700"
-                    >
-                        Ver todos
-                    </button>
                 </div>
                 {featuredPreviewPosts.length > 0 ? (
                     <div className="space-y-2">
                         {featuredPreviewPosts.map(post => (
                             <button
                                 key={post.id}
-                                onClick={() => {
-                                    setFeedQuickFilter('featured');
-                                    setViewMode('feed');
-                                }}
+                                onClick={() => handleOpenPost(post.id)}
                                 className="w-full text-left px-2 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
                             >
                                 <div className="flex items-center gap-3">
-                                    <img
-                                        src={post.imageUrl || KONQUEST_DEFAULT_COVER_IMAGE}
-                                        alt=""
-                                        className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
-                                        loading="lazy"
-                                    />
+                                    {post.imageUrl && !failedDiscoveryThumbs[post.id] ? (
+                                        <img
+                                            src={post.imageUrl}
+                                            alt=""
+                                            className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
+                                            loading="lazy"
+                                            onError={() => markDiscoveryThumbAsFailed(post.id)}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="w-10 h-10 rounded-md flex-shrink-0 relative overflow-hidden bg-cover bg-center"
+                                            style={{ backgroundImage: `url(${KONQUEST_DEFAULT_COVER_IMAGE})` }}
+                                        >
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                                        </div>
+                                    )}
                                     <p className="min-w-0 flex-1 text-left truncate">{post.text}</p>
                                 </div>
                             </button>
@@ -966,39 +1221,37 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4">
                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
                         <Icon name="bookmark" size="sm" className="text-purple-600" />
                         Pulses Favoritos
                     </h3>
-                    <button
-                        onClick={() => {
-                            setFeedQuickFilter('favorites');
-                            setViewMode('feed');
-                        }}
-                        className="text-sm font-semibold text-purple-600 hover:text-purple-700"
-                    >
-                        Ver todos
-                    </button>
                 </div>
                 {favoritePreviewPosts.length > 0 ? (
                     <div className="space-y-2">
                         {favoritePreviewPosts.map(post => (
                             <button
                                 key={post.id}
-                                onClick={() => {
-                                    setFeedQuickFilter('favorites');
-                                    setViewMode('feed');
-                                }}
+                                onClick={() => handleOpenPost(post.id)}
                                 className="w-full text-left px-2 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
                             >
                                 <div className="flex items-center gap-3">
-                                    <img
-                                        src={post.imageUrl || KONQUEST_DEFAULT_COVER_IMAGE}
-                                        alt=""
-                                        className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
-                                        loading="lazy"
-                                    />
+                                    {post.imageUrl && !failedDiscoveryThumbs[post.id] ? (
+                                        <img
+                                            src={post.imageUrl}
+                                            alt=""
+                                            className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
+                                            loading="lazy"
+                                            onError={() => markDiscoveryThumbAsFailed(post.id)}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="w-10 h-10 rounded-md flex-shrink-0 relative overflow-hidden bg-cover bg-center"
+                                            style={{ backgroundImage: `url(${KONQUEST_DEFAULT_COVER_IMAGE})` }}
+                                        >
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                                        </div>
+                                    )}
                                     <p className="min-w-0 flex-1 text-left truncate">{post.text}</p>
                                 </div>
                             </button>
@@ -1062,6 +1315,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                 ) : viewMode === 'channels' ? (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
                         {/* Sidebar - Channels & Categories */}
+                        {!selectedChannelData && (
                         <aside className="space-y-6 lg:col-span-3 lg:order-1">
                             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                                 <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
@@ -1078,16 +1332,18 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     >
                                         Todos os canais
                                     </button>
-                                    <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Criados por mim</p>
-                                        <div className="space-y-1">
-                                            {myOwnedChannels.length > 0 ? (
-                                                myOwnedChannels.map(channel => renderChannelSidebarOption(channel))
-                                            ) : (
-                                                <p className="px-3 py-2 text-xs text-gray-400">Você ainda não criou canais.</p>
-                                            )}
+                                    {canManageAdminFeatures && (
+                                        <div>
+                                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Criados por mim</p>
+                                            <div className="space-y-1">
+                                                {myOwnedChannels.length > 0 ? (
+                                                    myOwnedChannels.map(channel => renderChannelSidebarOption(channel))
+                                                ) : (
+                                                    <p className="px-3 py-2 text-xs text-gray-400">Você ainda não criou canais.</p>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
                                         <div className="space-y-1">
@@ -1131,120 +1387,365 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </div>
                             </div>
                         </aside>
+                        )}
 
                         {/* Main Channels */}
-                        <div className="lg:col-span-6 lg:order-2 space-y-6">
-                            {renderTabsBar()}
-                            <div className="grid grid-cols-1 gap-6">
-                                {channelsFilteredForList.length > 0 ? (
-                                    channelsFilteredForList.map(channel => (
-                                        <div key={channel.id} className="relative bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow">
-                                        <details className="absolute top-3 right-3 z-10">
-                                            <summary className="list-none w-9 h-9 rounded-full bg-white/90 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-white [&::-webkit-details-marker]:hidden">
-                                                <Icon name="more_horiz" size="sm" />
-                                            </summary>
-                                            <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleEditChannel(channel.id);
-                                                        (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                                    }}
-                                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                                >
-                                                    Editar
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeactivateChannel(channel.id);
-                                                        (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                                    }}
-                                                    className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
-                                                >
-                                                    Inativar
-                                                </button>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleDeleteChannel(channel.id);
-                                                        (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                                    }}
-                                                    className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
-                                                >
-                                                    Excluir
-                                                </button>
-                                            </div>
-                                        </details>
-                                        <div className="flex gap-3">
-                                            {channel.imageUrl && !failedChannelCovers[channel.id] ? (
-                                                <img
-                                                    src={channel.imageUrl}
-                                                    alt={channel.name}
-                                                    className="w-32 h-32 rounded-lg object-cover flex-shrink-0"
-                                                    onError={() => markChannelCoverAsFailed(channel.id)}
-                                                />
+                        <div className={`${selectedChannelData ? 'lg:col-span-12 lg:order-1' : 'lg:col-span-6 lg:order-2'} space-y-6`}>
+                            {!selectedChannelData && renderTabsBar()}
+                            {selectedChannelData ? (
+                                <div className="space-y-6">
+                                    <div>
+                                        <button
+                                            onClick={() => setSelectedChannel(null)}
+                                            className="inline-flex items-center gap-2 h-10 px-3 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                                        >
+                                            <Icon name="chevron_left" size="sm" />
+                                            Voltar
+                                        </button>
+                                    </div>
+                                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-visible">
+                                        <div className="flex items-stretch min-h-[144px]">
+                                            {selectedChannelData.imageUrl && !failedChannelCovers[selectedChannelData.id] ? (
+                                                <div className="w-48 h-48 lg:w-52 lg:h-52 self-start flex-shrink-0 bg-gray-100 overflow-hidden rounded-l-xl">
+                                                    <img
+                                                        src={selectedChannelData.imageUrl}
+                                                        alt={selectedChannelData.name}
+                                                        className="block w-full h-full object-cover rounded-l-xl"
+                                                        onError={() => markChannelCoverAsFailed(selectedChannelData.id)}
+                                                    />
+                                                </div>
                                             ) : (
                                                 <div
-                                                    className="w-32 h-32 rounded-lg flex-shrink-0 relative overflow-hidden bg-cover bg-center"
+                                                    className="w-48 h-48 lg:w-52 lg:h-52 self-start flex-shrink-0 relative overflow-hidden bg-cover bg-center rounded-l-xl"
                                                     style={{ backgroundImage: `url(${KONQUEST_DEFAULT_COVER_IMAGE})` }}
                                                 >
                                                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                                                 </div>
                                             )}
-                                            <div className="min-w-0 flex-1 flex flex-col">
-                                                <button
-                                                    onClick={() => {
-                                                        setSelectedChannel(channel.id);
-                                                        setViewMode('feed');
-                                                    }}
-                                                    className="text-left"
-                                                >
-                                                    <h3 className="font-bold text-gray-900 text-lg leading-tight line-clamp-1">{channel.name}</h3>
-                                                </button>
-                                                <p className="text-base text-gray-700 line-clamp-1">{channel.category || 'Geral'}</p>
-                                                <div className="mt-auto pt-4 border-t border-[#d4cbde] flex items-center justify-between gap-3">
-                                                    <div className="flex items-center gap-2 text-xs text-gray-700">
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <Icon name="public" size="sm" className="text-sm" />
-                                                            PT-BR
+                                            <div className="min-w-0 flex-1 p-4 sm:p-5 flex flex-col justify-between">
+                                                <div className="min-w-0">
+                                                    <h2 className="text-2xl font-bold text-gray-900 leading-tight">{selectedChannelData.name}</h2>
+                                                    <div className="mt-2 flex items-center gap-2 text-sm text-gray-600">
+                                                        <Icon name="lock_open" size="sm" />
+                                                        <span>Canal aberto</span>
+                                                    </div>
+                                                    <p className="mt-3 text-sm text-gray-700 line-clamp-2">{selectedChannelData.description}</p>
+                                                </div>
+                                                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                                                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            <Icon name="play_circle" size="sm" />
+                                                            {selectedChannelPosts.length} pulses
                                                         </span>
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <Icon name="visibility" size="sm" className="text-sm" />
-                                                            1
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            <Icon name="person" size="sm" />
+                                                            {selectedChannelData.isSubscribed ? 1 : 0} inscritos
                                                         </span>
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <Icon name="person" size="sm" className="text-sm" />
-                                                            1
+                                                        <span className="inline-flex items-center gap-1.5">
+                                                            <Icon name="groups" size="sm" />
+                                                            {selectedChannelData.ownerId ? 1 : 0} contribuidores
                                                         </span>
                                                     </div>
-                                                    <button
-                                                        onClick={() => handleToggleChannelSubscription(channel.id)}
-                                                        className="text-sm font-medium text-gray-700 transition-colors hover:text-purple-700"
-                                                    >
-                                                        {channel.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => handleToggleChannelSubscription(selectedChannelData.id)}
+                                                            className="h-10 px-3 text-sm font-semibold text-gray-700 hover:text-purple-700"
+                                                        >
+                                                            {selectedChannelData.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
+                                                        </button>
+                                                        {canManageAdminFeatures && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setCreateChannelId(selectedChannelData.id);
+                                                                        setIsCreateModalOpen(true);
+                                                                    }}
+                                                                    className="h-10 px-4 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700"
+                                                                >
+                                                                    Novo pulse
+                                                                </button>
+                                                                <details className="relative">
+                                                                    <summary className="list-none h-10 px-3 rounded-lg border border-gray-300 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-gray-50 [&::-webkit-details-marker]:hidden">
+                                                                        <Icon name="arrow_drop_down" size="sm" />
+                                                                    </summary>
+                                                                    <div className="absolute right-0 top-full mt-2 w-52 bg-white rounded-lg border border-gray-200 shadow-lg py-1 z-20">
+                                                                        {canManageSelectedChannel && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleEditChannel(selectedChannelData.id);
+                                                                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                                            >
+                                                                                Editar
+                                                                            </button>
+                                                                        )}
+                                                                        {canEditContributorsSelectedChannel && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleChannelContributors(selectedChannelData.id);
+                                                                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                                            >
+                                                                                Contribuidores
+                                                                            </button>
+                                                                        )}
+                                                                        {canTransferSelectedChannel && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleChannelTransfer(selectedChannelData.id);
+                                                                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                                            >
+                                                                                Transferir
+                                                                            </button>
+                                                                        )}
+                                                                        {canDeleteSelectedChannel && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleDeleteChannel(selectedChannelData.id);
+                                                                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                                }}
+                                                                                className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                                                                            >
+                                                                                Excluir
+                                                                            </button>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleChannelLinkGroup(selectedChannelData.id);
+                                                                                (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                            }}
+                                                                            className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                                        >
+                                                                            Vincular grupo
+                                                                        </button>
+                                                                    </div>
+                                                                </details>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center">
-                                        <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 mx-auto flex items-center justify-center mb-3">
-                                            <Icon name="inbox" size="md" />
-                                        </div>
-                                        <p className="text-sm font-semibold text-gray-900">Nenhum canal disponível</p>
-                                        <p className="text-xs text-gray-500 mt-1">Ajuste os filtros ou crie um novo canal para começar.</p>
                                     </div>
-                                )}
-                            </div>
+
+                                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                        <div className="px-4 pt-4">
+                                            <div className="inline-flex items-center rounded-lg bg-gray-100 p-1">
+                                                <button
+                                                    onClick={() => setChannelInternalTab('pulses')}
+                                                    className={`h-9 px-4 rounded-md text-sm font-semibold ${channelInternalTab === 'pulses' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                                >
+                                                    Pulses
+                                                </button>
+                                                <button
+                                                    onClick={() => setChannelInternalTab('discussion')}
+                                                    className={`h-9 px-4 rounded-md text-sm font-semibold ${channelInternalTab === 'discussion' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                                                >
+                                                    Discussão
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {channelInternalTab === 'pulses' ? (
+                                            <div className="p-4 grid grid-cols-1 min-[520px]:grid-cols-2 lg:grid-cols-4 gap-4">
+                                                {selectedChannelPosts.length > 0 ? selectedChannelPosts.map(post => (
+                                                    <PostCard
+                                                        key={post.id}
+                                                        post={post.imageUrl ? post : { ...post, imageUrl: KONQUEST_DEFAULT_COVER_IMAGE }}
+                                                        onRate={handleRate}
+                                                        onAddComment={handleAddComment}
+                                                        onOpenPost={handleOpenPost}
+                                                        onToggleBookmark={handleTogglePostBookmark}
+                                                        viewMode="grid"
+                                                    />
+                                                )) : (
+                                                    <div className="col-span-full p-8 text-center text-sm text-gray-500">
+                                                        Este canal ainda não possui pulses.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 space-y-4">
+                                                <div className="rounded-lg border border-gray-200 p-3">
+                                                    <textarea
+                                                        value={channelDiscussionText}
+                                                        onChange={(e) => setChannelDiscussionText(e.target.value.slice(0, COMMENT_CHAR_LIMIT))}
+                                                        placeholder="Escreva um comentário para o canal..."
+                                                        rows={3}
+                                                        className="w-full resize-none text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
+                                                    />
+                                                    <div className="mt-2 flex items-center justify-between">
+                                                        <p className="text-[11px] text-gray-400">{channelDiscussionText.length}/{COMMENT_CHAR_LIMIT}</p>
+                                                        <button
+                                                            onClick={handleSubmitChannelDiscussion}
+                                                            disabled={!channelDiscussionText.trim() || selectedChannelPosts.length === 0}
+                                                            className="h-9 px-3 rounded-md bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            Publicar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                {selectedChannelDiscussionItems.length > 0 ? (
+                                                    <div className="space-y-3">
+                                                        {selectedChannelDiscussionItems.map(item => (
+                                                            <div key={item.id} className="rounded-lg border border-gray-200 p-3">
+                                                                <div className="flex items-start gap-2">
+                                                                    <img src={USERS[item.userId]?.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-sm font-semibold text-gray-900">{USERS[item.userId]?.name}</p>
+                                                                        <p className="text-sm text-gray-700 break-words">{item.text}</p>
+                                                                        <p className="text-xs text-gray-400 mt-1">{item.timestamp}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-8 text-center text-sm text-gray-500">
+                                                        Ainda não há discussões neste canal.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-6">
+                                    {channelsFilteredForList.length > 0 ? (
+                                        <>
+                                        {visibleChannelsForList.map(channel => (
+                                            <div key={channel.id} className="relative bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow">
+                                            {canManageAdminFeatures && (
+                                            <details className="absolute top-3 right-3 z-10">
+                                                <summary className="list-none w-9 h-9 rounded-full bg-white/90 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-white [&::-webkit-details-marker]:hidden">
+                                                    <Icon name="more_horiz" size="sm" />
+                                                </summary>
+                                                <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleEditChannel(channel.id);
+                                                            (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                    >
+                                                        Editar
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeactivateChannel(channel.id);
+                                                            (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
+                                                    >
+                                                        Inativar
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteChannel(channel.id);
+                                                            (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                                                    >
+                                                        Excluir
+                                                    </button>
+                                                </div>
+                                            </details>
+                                            )}
+                                            <div className="flex gap-3">
+                                                {channel.imageUrl && !failedChannelCovers[channel.id] ? (
+                                                    <img
+                                                        src={channel.imageUrl}
+                                                        alt={channel.name}
+                                                        className="w-32 h-32 rounded-lg object-cover flex-shrink-0"
+                                                        onError={() => markChannelCoverAsFailed(channel.id)}
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        className="w-32 h-32 rounded-lg flex-shrink-0 relative overflow-hidden bg-cover bg-center"
+                                                        style={{ backgroundImage: `url(${KONQUEST_DEFAULT_COVER_IMAGE})` }}
+                                                    >
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                                                    </div>
+                                                )}
+                                                <div className="min-w-0 flex-1 flex flex-col">
+                                                    <button
+                                                        onClick={() => setSelectedChannel(channel.id)}
+                                                        className="text-left"
+                                                    >
+                                                        <h3 className="font-bold text-gray-900 text-lg leading-tight line-clamp-1">{channel.name}</h3>
+                                                    </button>
+                                                    <p className="text-base text-gray-700 line-clamp-1">{channel.category || 'Geral'}</p>
+                                                    <div className="mt-auto pt-4 border-t border-[#d4cbde] flex items-center justify-between gap-3">
+                                                        <div className="flex items-center gap-2 text-xs text-gray-700">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Icon name="public" size="sm" className="text-sm" />
+                                                                PT-BR
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Icon name="visibility" size="sm" className="text-sm" />
+                                                                1
+                                                            </span>
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Icon name="person" size="sm" className="text-sm" />
+                                                                1
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleToggleChannelSubscription(channel.id)}
+                                                            className="text-sm font-medium text-gray-700 transition-colors hover:text-purple-700"
+                                                        >
+                                                            {channel.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            </div>
+                                        ))}
+                                        <div ref={channelsSentinelRef} className="h-1" />
+                                        {isLoadingMoreChannels && (
+                                            <div className="py-4 flex justify-center">
+                                                <div className="slingshot-loader" aria-label="Carregando mais canais">
+                                                    <span className="slingshot-dot slingshot-dot-left"></span>
+                                                    <span className="slingshot-dot slingshot-dot-right"></span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {!hasMoreChannels && channelsFilteredForList.length > 0 && (
+                                            <div className="py-2 text-center text-xs font-semibold tracking-wide uppercase text-gray-400">
+                                                Fim da lista de canais
+                                            </div>
+                                        )}
+                                        </>
+                                    ) : (
+                                        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 text-center">
+                                            <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 mx-auto flex items-center justify-center mb-3">
+                                                <Icon name="inbox" size="md" />
+                                            </div>
+                                            <p className="text-sm font-semibold text-gray-900">Nenhum canal disponível</p>
+                                            <p className="text-xs text-gray-500 mt-1">Ajuste os filtros ou crie um novo canal para começar.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Sidebar - Highlights */}
+                        {!selectedChannelData && (
                         <aside className="space-y-6 lg:col-span-3 lg:order-3">
                             {renderPulseDiscoveryCards()}
                         </aside>
+                        )}
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
@@ -1265,7 +1766,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </div>
                             )}
                             {/* New Post Input */}
-                            {feedDisplayMode === 'timeline' && (
+                            {feedDisplayMode === 'timeline' && canManageAdminFeatures && (
                                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                                     <div className="flex items-center gap-4">
                                         <img src={USERS['user-4'].avatarUrl} className="w-12 h-12 rounded-full border border-gray-100" alt="" />
@@ -1313,7 +1814,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                                 onDeactivatePost={handleDeactivatePost}
                                                 onEditComment={handleEditComment}
                                                 onDeleteComment={handleDeleteComment}
-                                                onOpenPost={setActivePostId}
+                                                onOpenPost={handleOpenPost}
                                                 viewMode={feedDisplayMode === 'grid' ? 'grid' : 'list'}
                                                 isChannelSubscribed={!!channelsMap[post.channelId]?.isSubscribed}
                                                 onToggleChannelSubscription={handleToggleChannelSubscription}
@@ -1356,16 +1857,18 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     >
                                         Feed principal
                                     </button>
-                                    <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Criados por mim</p>
-                                        <div className="space-y-1">
-                                            {myOwnedChannels.length > 0 ? (
-                                                myOwnedChannels.map(channel => renderChannelSidebarOption(channel))
-                                            ) : (
-                                                <p className="px-3 py-2 text-xs text-gray-400">Você ainda não criou canais.</p>
-                                            )}
+                                    {canManageAdminFeatures && (
+                                        <div>
+                                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Criados por mim</p>
+                                            <div className="space-y-1">
+                                                {myOwnedChannels.length > 0 ? (
+                                                    myOwnedChannels.map(channel => renderChannelSidebarOption(channel))
+                                                ) : (
+                                                    <p className="px-3 py-2 text-xs text-gray-400">Você ainda não criou canais.</p>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
                                         <div className="space-y-1">
@@ -1444,6 +1947,28 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 Resetar
                             </button>
                         </div>
+                        <div className="rounded-lg border border-gray-200 p-2.5">
+                            <p className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">Perfil de visualização</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setUserViewMode('admin')}
+                                    className={`h-9 rounded-md text-sm font-semibold transition-colors ${userViewMode === 'admin' ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                >
+                                    Admin
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setUserViewMode('user')}
+                                    className={`h-9 rounded-md text-sm font-semibold transition-colors ${userViewMode === 'user' ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                >
+                                    Usuario
+                                </button>
+                            </div>
+                            <p className="text-[11px] text-gray-500 mt-2">
+                                Modo usuario oculta funções administrativas (publicar, editar e excluir).
+                            </p>
+                        </div>
                         <div className="space-y-2">
                             <label className="flex items-start justify-between gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
                                 <div>
@@ -1492,68 +2017,144 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                     <Icon name="science" size="md" />
                 </button>
             </div>
-            {isCreateModalOpen && (
-                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeCreateModal}>
-                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                            <div>
-                                <h2 className="text-lg font-bold text-gray-900">Novo pulse</h2>
-                                {(createMainType || createSubtype) && (
-                                    <p className="text-xs text-gray-500 mt-0.5">
-                                        {createMainType ? `Tipo: ${createMainType}` : ''}{createSubtype ? ` • Formato: ${createSubtype}` : ''}
-                                    </p>
-                                )}
-                            </div>
-                            <button onClick={closeCreateModal} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
-                                <Icon name="close" size="sm" />
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-5">
-                            <div>
-                                <p className="text-sm font-semibold text-gray-700 mb-2">1. Tipo de conteudo</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {CREATE_MAIN_OPTIONS.map(option => (
-                                        <button
-                                            key={option.type}
-                                            onClick={() => handleSelectMainType(option.type)}
-                                            className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors flex items-center gap-2 ${createMainType === option.type ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-                                        >
-                                            <Icon name={option.icon} size="sm" />
-                                            {option.label}
-                                        </button>
-                                    ))}
+            {isCreateModalOpen && canManageAdminFeatures && (
+                <>
+                    {!createMainType && (
+                        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeCreateModal}>
+                            <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                                    <h2 className="text-lg font-bold text-gray-900">Novo conteúdo</h2>
+                                    <button onClick={closeCreateModal} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
+                                        <Icon name="close" size="sm" />
+                                    </button>
                                 </div>
-                            </div>
-
-                            {createMainType && (
-                                <div>
-                                    <p className="text-sm font-semibold text-gray-700 mb-2">2. Formato</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {CREATE_SUB_OPTIONS[createMainType].map(option => (
+                                <div className="p-6">
+                                    <div className="grid grid-flow-col auto-cols-fr gap-3">
+                                        {CREATE_MAIN_OPTIONS.map(option => (
                                             <button
                                                 key={option.type}
-                                                onClick={() => handleSelectSubtype(option.type)}
-                                                className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors flex items-center gap-2 ${createSubtype === option.type ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                                onClick={() => handleSelectMainType(option.type)}
+                                                className="w-full h-[112px] min-w-0 rounded-md text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors flex flex-col items-center justify-center gap-2 px-2"
                                             >
-                                                <Icon name={option.icon} size="sm" />
+                                                <Icon name={option.icon} size="md" />
                                                 {option.label}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
-                            )}
+                            </div>
+                        </div>
+                    )}
 
-                            {createSubtype && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Nome do conteudo</label>
+                    {createMainType && needsSubtype && !createSubtype && (
+                        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeCreateModal}>
+                            <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                                    <h2 className="text-lg font-bold text-gray-900">
+                                        Novo conteúdo <span className="font-medium text-gray-600">({selectedMainOption?.label})</span>
+                                    </h2>
+                                    <button onClick={closeCreateModal} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
+                                        <Icon name="close" size="sm" />
+                                    </button>
+                                </div>
+                                <div className="p-6">
+                                    <div className="grid grid-flow-col auto-cols-fr gap-3">
+                                        {CREATE_SUB_OPTIONS[createMainType].map(option => (
+                                            <button
+                                                key={option.type}
+                                                onClick={() => handleSelectSubtype(option.type)}
+                                                className="w-full h-[112px] min-w-0 rounded-md text-sm font-semibold border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors flex flex-col items-center justify-center gap-2 px-2"
+                                            >
+                                                <Icon name={option.icon} size="md" />
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
+                                    <button onClick={backCreateStep} className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                        Voltar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isCreateDetailsStepReady && (
+                        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeCreateModal}>
+                            <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                                    <h2 className="text-lg font-bold text-gray-900">
+                                        Novo conteúdo
+                                        {createDialogTypeLabel ? <span className="font-medium text-gray-600"> ({createDialogTypeLabel})</span> : null}
+                                    </h2>
+                                    <button onClick={closeCreateModal} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
+                                        <Icon name="close" size="sm" />
+                                    </button>
+                                </div>
+                                <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                    <div className="lg:col-span-4">
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Imagem de capa (opcional)</label>
+                                        <input
+                                            ref={coverUploadInputRef}
+                                            type="file"
+                                            accept="image/jpeg,image/png,image/gif,image/webp"
+                                            className="hidden"
+                                            onChange={handleSelectCreateCover}
+                                        />
+                                        <div
+                                            className={`mt-2 h-[260px] rounded-xl border-2 border-dashed transition-colors flex flex-col items-center justify-center text-center p-4 ${
+                                                isCoverDragOver ? 'border-purple-500 bg-purple-50' : 'border-gray-300 bg-gray-50'
+                                            }`}
+                                            onDragOver={(e) => {
+                                                e.preventDefault();
+                                                setIsCoverDragOver(true);
+                                            }}
+                                            onDragLeave={(e) => {
+                                                e.preventDefault();
+                                                setIsCoverDragOver(false);
+                                            }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                setIsCoverDragOver(false);
+                                                const file = e.dataTransfer.files?.[0] ?? null;
+                                                applyCreateCoverFile(file);
+                                            }}
+                                        >
+                                            {createCoverImageUrl ? (
+                                                <img src={createCoverImageUrl} alt="Preview da capa" className="w-full h-full object-cover rounded-lg" />
+                                            ) : (
+                                                <>
+                                                    <Icon name="image" size="md" className="text-gray-400 mb-2" />
+                                                    <p className="text-sm font-semibold text-gray-700">Arraste e solte a imagem aqui</p>
+                                                    <p className="text-xs text-gray-500 mt-1">ou selecione um arquivo</p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => coverUploadInputRef.current?.click()}
+                                                        className="mt-3 h-10 px-2 bg-transparent text-sm font-semibold text-purple-700 hover:text-purple-800 inline-flex items-center gap-2"
+                                                    >
+                                                        <Icon name="upload" size="sm" />
+                                                        Enviar arquivo
+                                                    </button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className={((createMainType === 'LINK' || createMainType === 'HTML') ? 'md:col-span-2' : '')}>
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Nome do conteúdo</label>
                                         <input
                                             type="text"
                                             value={createName}
                                             onChange={(e) => setCreateName(e.target.value)}
+                                            maxLength={createMainType === 'QUIZ' ? QUIZ_NAME_MAX_LENGTH : CONTENT_NAME_MAX_LENGTH}
                                             className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                            placeholder="Ex: Boas praticas de onboarding"
+                                            placeholder="Ex: Boas práticas de onboarding"
                                         />
+                                        <p className={`mt-1 text-[11px] ${isCreateNameTooLong ? 'text-red-600' : 'text-gray-400'}`}>
+                                            {createName.length}/{createMainType === 'QUIZ' ? QUIZ_NAME_MAX_LENGTH : CONTENT_NAME_MAX_LENGTH}
+                                        </p>
                                     </div>
                                     <div>
                                         <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Canal</label>
@@ -1568,72 +2169,79 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                         </select>
                                     </div>
                                     <div className="md:col-span-2">
-                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Descricao</label>
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Descrição</label>
                                         <textarea
                                             value={createDescription}
                                             onChange={(e) => setCreateDescription(e.target.value)}
                                             rows={3}
                                             className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
-                                            placeholder="Escreva a descricao da publicacao"
+                                            placeholder="Escreva a descrição da publicação"
                                         />
                                     </div>
-
                                     {(createMainType === 'LINK' || createMainType === 'HTML') && (
                                         <div className="md:col-span-2">
-                                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Link do conteudo</label>
+                                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Link externo</label>
                                             <input
                                                 type="url"
                                                 value={createExternalUrl}
                                                 onChange={(e) => setCreateExternalUrl(e.target.value)}
                                                 className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                                placeholder="Cole aqui a URL do conteudo"
+                                                placeholder="Cole aqui a URL do conteúdo"
                                             />
+                                            {createUrlError && <p className="mt-1 text-xs text-red-600">{createUrlError}</p>}
                                         </div>
                                     )}
-
-                                    {(createMainType === 'FILE' || createMainType === 'HTML') && (
+                                    {(createMainType === 'FILE' || createSubtype === 'GENIALLY') && (
                                         <div className="md:col-span-2 flex items-center gap-3">
                                             <input ref={uploadInputRef} type="file" className="hidden" onChange={handleSelectCreateFile} />
                                             <button
                                                 type="button"
-                                                onClick={() => uploadInputRef.current?.click()}
-                                                className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                                                onClick={() => {
+                                                    if (uploadInputRef.current && createSubtype) {
+                                                        uploadInputRef.current.accept = CREATE_ACCEPT_TYPES[createSubtype] || '';
+                                                    }
+                                                    uploadInputRef.current?.click();
+                                                }}
+                                                className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50 inline-flex items-center gap-2"
                                             >
-                                                Anexar arquivo
+                                                <Icon name="upload" size="sm" />
+                                                Enviar arquivo
                                             </button>
                                             <span className="text-sm text-gray-600 truncate">
                                                 {createFile ? createFile.name : 'Nenhum arquivo selecionado'}
                                             </span>
                                         </div>
                                     )}
-
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tempo (segundos)</label>
-                                        <input
-                                            type="number"
-                                            min={1}
-                                            value={createDuration}
-                                            onChange={(e) => setCreateDuration(Number(e.target.value || 1))}
-                                            className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                        />
+                                    {createMainType === 'HTML' && (
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tempo (minutos)</label>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                value={createDuration}
+                                                onChange={(e) => setCreateDuration(Number(e.target.value || 1))}
+                                                className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            />
+                                        </div>
+                                    )}
                                     </div>
                                 </div>
-                            )}
+                                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
+                                    <button onClick={backCreateStep} className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                        Voltar
+                                    </button>
+                                    <button
+                                        onClick={handleSubmitCreatePulse}
+                                        disabled={!canSubmitCreate}
+                                        className="h-11 px-5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Publicar pulse
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
-                            <button onClick={backCreateStep} className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-                                Voltar
-                            </button>
-                            <button
-                                onClick={handleSubmitCreatePulse}
-                                disabled={!canSubmitCreate}
-                                className="h-11 px-5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                Publicar pulse
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                    )}
+                </>
             )}
             {activePost && (
                 <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-0" onClick={() => setActivePostId(null)}>
@@ -1725,7 +2333,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                             <div className={`${isLightboxSidebarCollapsed ? 'lg:col-span-12' : 'lg:col-span-8'} relative bg-black flex items-center justify-center min-h-[240px]`}>
                                 {renderLightboxMedia(activePost)}
                             </div>
-                            <div className={`${isLightboxSidebarCollapsed ? 'hidden lg:flex' : 'flex'} lg:col-span-4 flex-col min-h-0 h-full`}>
+                            <div className={`${isLightboxSidebarCollapsed ? 'hidden' : 'flex'} lg:col-span-4 flex-col min-h-0 h-full`}>
                                 <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
                                         <img src={USERS[activePost.userId]?.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
@@ -1865,7 +2473,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <button
                                         type="button"
                                         onClick={() => handleTogglePostBookmark(activePost.id)}
-                                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${(activePost.isBookmarked ?? false) ? 'text-purple-700 bg-purple-50' : 'text-gray-700 hover:bg-gray-100'}`}
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${(activePost.isBookmarked ?? false) ? 'text-purple-700' : 'text-gray-700 hover:bg-gray-100'}`}
                                         aria-label={(activePost.isBookmarked ?? false) ? 'Pulse salvo' : 'Salvar pulse'}
                                     >
                                         <Icon name="bookmark" size="md" filled={!!activePost.isBookmarked} />

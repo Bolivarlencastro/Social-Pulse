@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { CoursesPage } from './components/courses/CoursesPage';
 import { CreateCoursePage } from './components/courses/CreateCoursePage';
 import { SocialPage } from './components/social/SocialPage';
+import { ContentManagementPage } from './components/management/ContentManagementPage';
 import { StoryMappingModal, useStoryMapping } from './components/StoryMapping';
 import { View } from './types';
 
@@ -95,6 +96,8 @@ const App: React.FC = () => {
         );
       case 'social':
         return <SocialPage initialViewMode="feed" />;
+      case 'gestaoConteudo':
+        return <ContentManagementPage />;
       default:
         return (
           <div className="flex-1 flex items-center justify-center text-gray-400 p-8 text-center">

@@ -16,7 +16,7 @@ interface PostCardProps {
   onEditPost?: (postId: string) => void;
   onDeletePost?: (postId: string) => void;
   onDeactivatePost?: (postId: string) => void;
-  onOpenPost?: (postId: string) => void;
+  onOpenPost?: (postId: string, options?: { focusComment?: boolean }) => void;
   onEditComment?: (postId: string, commentId: string) => void;
   onDeleteComment?: (postId: string, commentId: string) => void;
   isChannelSubscribed?: boolean;
@@ -232,7 +232,7 @@ const SimpleCommentForm: React.FC<{ onSubmit: (text: string) => void }> = ({ onS
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-1">
+        <form onSubmit={handleSubmit}>
             <div className="flex items-center gap-2">
                 <input
                     type="text"
@@ -248,9 +248,6 @@ const SimpleCommentForm: React.FC<{ onSubmit: (text: string) => void }> = ({ onS
                     </button>
                 )}
             </div>
-            <p className={`text-right text-[11px] ${commentText.length >= COMMENT_CHAR_LIMIT ? 'text-amber-600' : 'text-gray-400'}`}>
-                {commentText.length}/{COMMENT_CHAR_LIMIT}
-            </p>
         </form>
     );
 };
@@ -357,7 +354,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
   const isInlineVideo = normalizedContentType === 'VIDEO' && (isVideoEmbed || !!post.mediaUrl);
   const isInlineAudio = normalizedContentType === 'PODCAST' && !!post.mediaUrl;
   const isImagePulse = normalizedContentType === 'IMAGE';
-  const shouldShowFloatingPlay = !['VIDEO', 'PODCAST', 'IMAGE'].includes(normalizedContentType);
+  const shouldShowFloatingPlay = !['VIDEO', 'PODCAST'].includes(normalizedContentType);
   const inlineVideoLayout = post.mediaLayout === 'vertical' ? 'vertical' : 'horizontal';
   const inlineImageLayout = post.mediaLayout === 'vertical' ? 'vertical' : post.mediaLayout === 'horizontal' ? 'horizontal' : 'square';
   const imageAspectClass = inlineImageLayout === 'vertical' ? 'aspect-[4/5]' : inlineImageLayout === 'horizontal' ? 'aspect-[16/9]' : 'aspect-square';
@@ -512,51 +509,6 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
                       {isChannelSubscribed ? 'Inscrito' : 'Inscrever-se'}
                   </button>
               )}
-              {(onEditPost || onDeletePost || onDeactivatePost) && (
-                  <details className="relative">
-                      <summary className="list-none w-12 h-12 aspect-square rounded-full text-gray-500 hover:bg-gray-100 cursor-pointer flex items-center justify-center [&::-webkit-details-marker]:hidden">
-                          <Icon name="more_horiz" size="sm" />
-                      </summary>
-                      <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg border border-gray-200 shadow-lg py-1 z-20">
-                          {onEditPost && (
-                              <button
-                                  onClick={(e) => {
-                                      e.stopPropagation();
-                                      onEditPost(post.id);
-                                      (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                              >
-                                  Editar
-                              </button>
-                          )}
-                          {onDeactivatePost && (
-                              <button
-                                  onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDeactivatePost(post.id);
-                                      (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
-                              >
-                                  Inativar
-                              </button>
-                          )}
-                          {onDeletePost && (
-                              <button
-                                  onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDeletePost(post.id);
-                                      (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
-                              >
-                                  Excluir
-                              </button>
-                          )}
-                      </div>
-                  </details>
-              )}
           </div>
       </div>
 
@@ -621,7 +573,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
                   </div>
                   )}
               </div>
-               <button onClick={() => setShowComments(!showComments)} className="text-gray-700 hover:opacity-70 transition-opacity p-1">
+               <button
+                  onClick={() => onOpenPost?.(post.id, { focusComment: true })}
+                  className="text-gray-700 hover:opacity-70 transition-opacity p-1"
+               >
                   <Icon name="chat_bubble" size="md" />
               </button>
                <button onClick={handleShare} className="text-gray-700 hover:opacity-70 transition-opacity p-1">
@@ -630,19 +585,12 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
           </div>
            <button
               onClick={handleBookmark}
-              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isBookmarked ? 'text-purple-700 bg-purple-50' : 'text-gray-700 hover:bg-gray-100'}`}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${isBookmarked ? 'text-purple-700' : 'text-gray-700 hover:bg-gray-100'}`}
               aria-label={isBookmarked ? 'Pulse salvo' : 'Salvar pulse'}
             >
               <Icon name="bookmark" size="md" filled={isBookmarked} />
           </button>
       </div>
-
-      {/* Post Stats (Rating) */}
-      {post.ratingVotes > 0 && (
-          <div className="px-4 pb-1">
-              <span className="text-sm font-semibold text-gray-800">{post.rating.toFixed(1)} de 5 ({post.ratingVotes.toLocaleString('pt-BR')} avaliações)</span>
-          </div>
-      )}
 
       {/* Post Caption/Text */}
       <div className="px-4 pb-2 text-sm text-gray-800 cursor-pointer" onClick={() => onOpenPost?.(post.id)}>
@@ -694,7 +642,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
            <SimpleCommentForm onSubmit={(text) => onAddComment(post.id, text)} />
       </div>
       {actionToastMessage && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] pointer-events-none">
               <div className="inline-flex items-center rounded-md bg-gray-900 text-white text-xs px-3 py-1.5 shadow-lg">
                   {actionToastMessage}
               </div>
