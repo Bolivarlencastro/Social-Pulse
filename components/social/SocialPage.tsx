@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { POSTS, CHANNELS, USERS } from '../../constants';
+import { POSTS, CHANNELS, USERS, KONQUEST_DEFAULT_COVER_IMAGE } from '../../constants';
 import { PostCard } from '../PostCard';
 import { PulsesTable } from './PulsesTable';
 import { Icon } from '../Icon';
@@ -8,9 +8,74 @@ import { KpiCard } from '../KpiCard';
 import { SentimentChart } from './SentimentChart';
 import { TopTopics } from './TopTopics';
 import { EngagementLeaders } from './EngagementLeaders';
-import { Post, Comment } from '../../types';
+import { Post, Comment, Channel } from '../../types';
 
 type SocialViewMode = 'feed' | 'management' | 'channels';
+type CreateMainType = 'FILE' | 'LINK' | 'QUIZ' | 'HTML' | null;
+type CreateSubtype =
+    | 'VIDEO'
+    | 'IMAGE'
+    | 'PODCAST'
+    | 'PDF'
+    | 'WORD'
+    | 'POWERPOINT'
+    | 'EXCEL'
+    | 'YOUTUBE'
+    | 'VIMEO'
+    | 'SOUNDCLOUD'
+    | 'GOOGLE_DRIVE'
+    | 'EXTERNAL_LINK'
+    | 'EVALUATIVE_QUIZ'
+    | 'SURVEY_QUIZ'
+    | 'GENIALLY'
+    | 'H5P'
+    | null;
+
+const CREATE_MAIN_OPTIONS: Array<{ type: Exclude<CreateMainType, null>; label: string; icon: string }> = [
+    { type: 'FILE', label: 'Arquivo', icon: 'file_upload' },
+    { type: 'LINK', label: 'Link', icon: 'link' },
+    { type: 'QUIZ', label: 'Quiz', icon: 'quiz' },
+    { type: 'HTML', label: 'H5P / Genially', icon: 'html' }
+];
+
+const CREATE_SUB_OPTIONS: Record<Exclude<CreateMainType, null>, Array<{ type: Exclude<CreateSubtype, null>; label: string; icon: string }>> = {
+    FILE: [
+        { type: 'VIDEO', label: 'Video', icon: 'video_file' },
+        { type: 'IMAGE', label: 'Imagem', icon: 'image' },
+        { type: 'PODCAST', label: 'Podcast', icon: 'mic' },
+        { type: 'PDF', label: 'PDF', icon: 'picture_as_pdf' },
+        { type: 'WORD', label: 'Texto', icon: 'description' },
+        { type: 'POWERPOINT', label: 'Apresentacao', icon: 'slideshow' },
+        { type: 'EXCEL', label: 'Planilha', icon: 'table_view' }
+    ],
+    LINK: [
+        { type: 'YOUTUBE', label: 'YouTube', icon: 'smart_display' },
+        { type: 'VIMEO', label: 'Vimeo', icon: 'play_circle' },
+        { type: 'SOUNDCLOUD', label: 'SoundCloud', icon: 'graphic_eq' },
+        { type: 'GOOGLE_DRIVE', label: 'Google Drive', icon: 'cloud' },
+        { type: 'EXTERNAL_LINK', label: 'Link externo', icon: 'language' }
+    ],
+    QUIZ: [
+        { type: 'EVALUATIVE_QUIZ', label: 'Quiz avaliativo', icon: 'quiz' },
+        { type: 'SURVEY_QUIZ', label: 'Quiz pesquisa', icon: 'poll' }
+    ],
+    HTML: [
+        { type: 'GENIALLY', label: 'Genially', icon: 'language' },
+        { type: 'H5P', label: 'H5P', icon: 'language' }
+    ]
+};
+
+const CREATE_ACCEPT_TYPES: Record<string, string> = {
+    VIDEO: 'video/mp4,video/webm',
+    IMAGE: 'image/jpeg,image/png,image/gif,image/webp',
+    PODCAST: 'audio/mpeg,audio/mp3,audio/wav',
+    PDF: 'application/pdf',
+    WORD: '.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    POWERPOINT: '.ppt,.pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    EXCEL: '.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    GENIALLY: '.zip,application/zip,application/x-zip-compressed',
+    H5P: '.zip,application/zip,application/x-zip-compressed'
+};
 
 interface SocialPageProps {
     initialViewMode?: SocialViewMode;
@@ -19,23 +84,58 @@ interface SocialPageProps {
 export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed' }) => {
     const [viewMode, setViewMode] = useState<SocialViewMode>(initialViewMode);
     const [feedDisplayMode, setFeedDisplayMode] = useState<'timeline' | 'grid'>('timeline');
-    const [posts, setPosts] = useState<Post[]>(POSTS);
+    const [posts, setPosts] = useState<Post[]>(() => POSTS.map(post => ({ ...post, isActive: post.isActive ?? true })));
+    const [channels, setChannels] = useState<Channel[]>(() => CHANNELS.map(channel => ({ ...channel, isActive: channel.isActive ?? true })));
     const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [activePostId, setActivePostId] = useState<string | null>(null);
+    const [lightboxCommentText, setLightboxCommentText] = useState('');
+    const [isLightboxDescriptionExpanded, setIsLightboxDescriptionExpanded] = useState(false);
+    const [failedChannelCovers, setFailedChannelCovers] = useState<Record<string, boolean>>({});
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [createMainType, setCreateMainType] = useState<CreateMainType>(null);
+    const [createSubtype, setCreateSubtype] = useState<CreateSubtype>(null);
+    const [createFile, setCreateFile] = useState<File | null>(null);
+    const [createName, setCreateName] = useState('');
+    const [createDescription, setCreateDescription] = useState('');
+    const [createExternalUrl, setCreateExternalUrl] = useState('');
+    const [createChannelId, setCreateChannelId] = useState<string>(() => CHANNELS[0]?.id || '');
+    const [createDuration, setCreateDuration] = useState<number>(60);
+    const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+
+    const channelsMap = React.useMemo(
+        () => channels.reduce((acc, channel) => {
+            acc[channel.id] = channel;
+            return acc;
+        }, {} as Record<string, Channel>),
+        [channels]
+    );
 
     // Update viewMode if initialViewMode prop changes
     React.useEffect(() => {
         setViewMode(initialViewMode);
     }, [initialViewMode]);
 
-    const handleLike = (postId: string) => {
+    const handleRate = (postId: string, ratingValue: number) => {
         setPosts(prev => prev.map(post => {
-            if (post.id === postId) {
-                return {
-                    ...post,
-                    isLiked: !post.isLiked,
-                    likes: post.isLiked ? post.likes - 1 : post.likes + 1
-                };
-            }
+            if (post.id !== postId) return post;
+
+            const previousUserRating = post.userRating ?? 0;
+            const previousVotes = post.ratingVotes ?? 0;
+            const previousTotal = (post.rating ?? 0) * previousVotes;
+            const nextVotes = previousUserRating > 0 ? previousVotes : previousVotes + 1;
+            const nextTotal = previousUserRating > 0
+                ? previousTotal - previousUserRating + ratingValue
+                : previousTotal + ratingValue;
+            const nextRating = nextVotes > 0 ? Number((nextTotal / nextVotes).toFixed(1)) : 0;
+
+            return {
+                ...post,
+                userRating: ratingValue,
+                ratingVotes: nextVotes,
+                rating: nextRating
+            };
+
             return post;
         }));
     };
@@ -61,27 +161,471 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         }));
     };
 
-    const filteredPosts = selectedChannel 
-        ? posts.filter(p => p.channelId === selectedChannel)
-        : posts;
+    const collectCommentIdsToRemove = (comments: Comment[], rootId: string): Set<string> => {
+        const ids = new Set<string>([rootId]);
+        let foundNew = true;
+        while (foundNew) {
+            foundNew = false;
+            comments.forEach(comment => {
+                if (comment.parentId && ids.has(comment.parentId) && !ids.has(comment.id)) {
+                    ids.add(comment.id);
+                    foundNew = true;
+                }
+            });
+        }
+        return ids;
+    };
+
+    const handleEditComment = (postId: string, commentId: string) => {
+        const post = posts.find(p => p.id === postId);
+        const comment = post?.comments.find(c => c.id === commentId);
+        if (!comment) return;
+
+        const updatedText = window.prompt('Editar comentário', comment.text);
+        if (!updatedText || !updatedText.trim()) return;
+
+        setPosts(prev => prev.map(p => {
+            if (p.id !== postId) return p;
+            return {
+                ...p,
+                comments: p.comments.map(c => c.id === commentId ? { ...c, text: updatedText.trim(), timestamp: 'Editado agora' } : c)
+            };
+        }));
+    };
+
+    const handleDeleteComment = (postId: string, commentId: string) => {
+        const confirmed = window.confirm('Deseja excluir este comentário?');
+        if (!confirmed) return;
+
+        setPosts(prev => prev.map(p => {
+            if (p.id !== postId) return p;
+            const idsToRemove = collectCommentIdsToRemove(p.comments, commentId);
+            const remainingComments = p.comments.filter(c => !idsToRemove.has(c.id));
+            return {
+                ...p,
+                comments: remainingComments,
+                commentCount: Math.max(0, p.commentCount - idsToRemove.size)
+            };
+        }));
+    };
+
+    const handleEditPost = (postId: string) => {
+        const post = posts.find(p => p.id === postId);
+        if (!post) return;
+
+        const updatedText = window.prompt('Editar pulse', post.text);
+        if (!updatedText || !updatedText.trim()) return;
+
+        setPosts(prev => prev.map(p => p.id === postId ? { ...p, text: updatedText.trim(), timestamp: 'Editado agora' } : p));
+    };
+
+    const handleDeletePost = (postId: string) => {
+        const confirmed = window.confirm('Deseja realmente excluir este pulse?');
+        if (!confirmed) return;
+
+        setPosts(prev => prev.filter(p => p.id !== postId));
+    };
+
+    const handleDeactivatePost = (postId: string) => {
+        const confirmed = window.confirm('Deseja inativar este pulse?');
+        if (!confirmed) return;
+
+        setPosts(prev => prev.map(p => p.id === postId ? { ...p, isActive: false } : p));
+    };
+
+    const handleTogglePostBookmark = (postId: string) => {
+        setPosts(prev => prev.map(p => p.id === postId ? { ...p, isBookmarked: !p.isBookmarked } : p));
+    };
+
+    const handleEditChannel = (channelId: string) => {
+        const channel = channels.find(c => c.id === channelId);
+        if (!channel) return;
+
+        const updatedName = window.prompt('Editar nome do canal', channel.name);
+        if (!updatedName || !updatedName.trim()) return;
+        const updatedDescription = window.prompt('Editar descrição do canal', channel.description);
+        if (!updatedDescription || !updatedDescription.trim()) return;
+
+        setChannels(prev => prev.map(c => c.id === channelId ? { ...c, name: updatedName.trim(), description: updatedDescription.trim() } : c));
+    };
+
+    const handleDeleteChannel = (channelId: string) => {
+        const confirmed = window.confirm('Deseja realmente excluir este canal?');
+        if (!confirmed) return;
+
+        setChannels(prev => prev.filter(c => c.id !== channelId));
+        if (selectedChannel === channelId) {
+            setSelectedChannel(null);
+        }
+    };
+
+    const handleDeactivateChannel = (channelId: string) => {
+        const confirmed = window.confirm('Deseja inativar este canal?');
+        if (!confirmed) return;
+
+        setChannels(prev => prev.map(c => c.id === channelId ? { ...c, isActive: false } : c));
+        if (selectedChannel === channelId) {
+            setSelectedChannel(null);
+        }
+    };
+
+    const handleToggleChannelSubscription = (channelId: string) => {
+        setChannels(prev => prev.map(channel => (
+            channel.id === channelId
+                ? { ...channel, isSubscribed: !channel.isSubscribed }
+                : channel
+        )));
+    };
+
+    const activeChannels = channels.filter(channel => channel.isActive !== false);
+    const subscribedChannels = activeChannels.filter(channel => channel.isSubscribed);
+    const unsubscribedChannels = activeChannels.filter(channel => !channel.isSubscribed);
+    const availableCategories = Array.from(new Set(activeChannels.map(channel => channel.category || 'Geral')));
+    const channelsInSelectedCategory = selectedCategory
+        ? activeChannels.filter(channel => (channel.category || 'Geral') === selectedCategory)
+        : activeChannels;
+    const activeChannelIds = new Set(activeChannels.map(channel => channel.id));
+    const visiblePosts = posts.filter(post => post.isActive !== false && activeChannelIds.has(post.channelId));
+    const postsByCategory = selectedCategory
+        ? visiblePosts.filter(post => (channelsMap[post.channelId]?.category || 'Geral') === selectedCategory)
+        : visiblePosts;
+    const filteredPosts = selectedChannel
+        ? postsByCategory.filter(p => p.channelId === selectedChannel)
+        : postsByCategory;
+    const activePost = activePostId ? posts.find(post => post.id === activePostId) : null;
+    const activePostIndex = activePostId ? filteredPosts.findIndex(post => post.id === activePostId) : -1;
+    const hasPreviousPost = activePostIndex > 0;
+    const hasNextPost = activePostIndex >= 0 && activePostIndex < filteredPosts.length - 1;
+
+    const openPreviousPost = () => {
+        if (!hasPreviousPost) return;
+        setActivePostId(filteredPosts[activePostIndex - 1].id);
+    };
+
+    const openNextPost = () => {
+        if (!hasNextPost) return;
+        setActivePostId(filteredPosts[activePostIndex + 1].id);
+    };
+
+    const markChannelCoverAsFailed = (channelId: string) => {
+        setFailedChannelCovers(prev => ({ ...prev, [channelId]: true }));
+    };
+
+    const resetCreateForm = () => {
+        setCreateMainType(null);
+        setCreateSubtype(null);
+        setCreateFile(null);
+        setCreateName('');
+        setCreateDescription('');
+        setCreateExternalUrl('');
+        setCreateDuration(60);
+        if (uploadInputRef.current) {
+            uploadInputRef.current.value = '';
+        }
+    };
+
+    const closeCreateModal = () => {
+        setIsCreateModalOpen(false);
+        resetCreateForm();
+    };
+
+    const backCreateStep = () => {
+        if (createSubtype) {
+            setCreateSubtype(null);
+            setCreateFile(null);
+            setCreateExternalUrl('');
+            if (uploadInputRef.current) {
+                uploadInputRef.current.value = '';
+            }
+            return;
+        }
+        if (createMainType) {
+            setCreateMainType(null);
+            return;
+        }
+        closeCreateModal();
+    };
+
+    const handleSelectMainType = (mainType: Exclude<CreateMainType, null>) => {
+        setCreateMainType(mainType);
+        setCreateSubtype(null);
+        setCreateFile(null);
+        setCreateExternalUrl('');
+        if (uploadInputRef.current) {
+            uploadInputRef.current.value = '';
+        }
+    };
+
+    const handleSelectSubtype = (subtype: Exclude<CreateSubtype, null>) => {
+        setCreateSubtype(subtype);
+        setCreateFile(null);
+        setCreateExternalUrl('');
+        if (uploadInputRef.current) {
+            uploadInputRef.current.value = '';
+        }
+
+        const accept = CREATE_ACCEPT_TYPES[subtype];
+        if (accept && uploadInputRef.current) {
+            uploadInputRef.current.accept = accept;
+            uploadInputRef.current.click();
+        }
+    };
+
+    const handleSelectCreateFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0] ?? null;
+        setCreateFile(file);
+        if (file && !createName.trim()) {
+            const fileNameWithoutExtension = file.name.replace(/\.[^/.]+$/, '');
+            setCreateName(fileNameWithoutExtension);
+        }
+    };
+
+    const inferPostFromExternalUrl = (url: string): { contentType: string; embed?: Post['embed'] } => {
+        const lower = url.toLowerCase();
+        if (createSubtype === 'YOUTUBE') {
+            const match = url.match(/(?:youtube\.com\/\S*(?:\/embed\/|watch\?(?:\S*?&?v=))|youtu\.be\/)([a-zA-Z0-9_-]{6,11})/);
+            const videoId = match?.[1];
+            if (videoId) {
+                return {
+                    contentType: 'VIDEO',
+                    embed: { provider: 'youtube', embedUrl: `https://www.youtube.com/embed/${videoId}` }
+                };
+            }
+        }
+        if (createSubtype === 'VIMEO') {
+            const match = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+            const videoId = match?.[1];
+            if (videoId) {
+                return {
+                    contentType: 'VIDEO',
+                    embed: { provider: 'vimeo', embedUrl: `https://player.vimeo.com/video/${videoId}` }
+                };
+            }
+        }
+        if (createSubtype === 'SOUNDCLOUD') {
+            return {
+                contentType: 'PODCAST',
+                embed: { provider: 'soundcloud', embedUrl: url }
+            };
+        }
+        if (createSubtype === 'GOOGLE_DRIVE') {
+            if (lower.includes('/spreadsheets/')) {
+                return { contentType: 'SPREADSHEET', embed: { provider: 'google_sheets', embedUrl: url } };
+            }
+            if (lower.includes('/presentation/')) {
+                return { contentType: 'PRESENTATION', embed: { provider: 'google_slides', embedUrl: url } };
+            }
+            return { contentType: 'TEXT', embed: { provider: 'google_docs', embedUrl: url } };
+        }
+        if (createSubtype === 'GENIALLY') {
+            return { contentType: 'GENIALLY', embed: { provider: 'genially', embedUrl: url } };
+        }
+        if (createSubtype === 'H5P') {
+            return { contentType: 'H5P', embed: { provider: 'h5p', embedUrl: url } };
+        }
+        return { contentType: 'TEXT', embed: { provider: 'link', embedUrl: url } };
+    };
+
+    const getContentTypeFromSubtype = (subtype: CreateSubtype): string => {
+        switch (subtype) {
+            case 'VIDEO':
+            case 'IMAGE':
+            case 'PODCAST':
+            case 'PDF':
+                return subtype;
+            case 'WORD':
+                return 'TEXT';
+            case 'POWERPOINT':
+                return 'PRESENTATION';
+            case 'EXCEL':
+                return 'SPREADSHEET';
+            case 'EVALUATIVE_QUIZ':
+            case 'SURVEY_QUIZ':
+                return 'QUIZ';
+            case 'GENIALLY':
+                return 'GENIALLY';
+            case 'H5P':
+                return 'H5P';
+            default:
+                return 'TEXT';
+        }
+    };
+
+    const canSubmitCreate = React.useMemo(() => {
+        if (!createMainType || !createSubtype || !createName.trim() || !createChannelId) return false;
+        if (createMainType === 'FILE') return !!createFile;
+        if (createMainType === 'LINK' || createMainType === 'HTML') return !!createExternalUrl.trim();
+        return true;
+    }, [createMainType, createSubtype, createName, createChannelId, createFile, createExternalUrl]);
+
+    const handleSubmitCreatePulse = () => {
+        if (!canSubmitCreate || !createSubtype) return;
+
+        const createdAt = 'Agora mesmo';
+        let contentType = getContentTypeFromSubtype(createSubtype);
+        let imageUrl: string | undefined = undefined;
+        let mediaUrl: string | undefined = undefined;
+        let embed: Post['embed'] | undefined = undefined;
+
+        if (createMainType === 'FILE' && createFile) {
+            const localUrl = URL.createObjectURL(createFile);
+            if (contentType === 'IMAGE') {
+                imageUrl = localUrl;
+            } else if (contentType === 'VIDEO' || contentType === 'PODCAST') {
+                mediaUrl = localUrl;
+                imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+            } else {
+                embed = { provider: 'file', embedUrl: localUrl };
+                imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+            }
+        } else if ((createMainType === 'LINK' || createMainType === 'HTML') && createExternalUrl.trim()) {
+            const inferred = inferPostFromExternalUrl(createExternalUrl.trim());
+            contentType = inferred.contentType;
+            embed = inferred.embed;
+            imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+        } else if (createMainType === 'QUIZ') {
+            imageUrl = KONQUEST_DEFAULT_COVER_IMAGE;
+        }
+
+        const newPost: Post = {
+            id: `post-${Date.now()}`,
+            userId: 'user-4',
+            channelId: createChannelId,
+            contentType,
+            text: createDescription.trim() || `Novo pulse: ${createName.trim()}`,
+            timestamp: createdAt,
+            imageUrl,
+            mediaUrl,
+            embed,
+            rating: 0,
+            ratingVotes: 0,
+            userRating: 0,
+            likes: 0,
+            commentCount: 0,
+            isLiked: false,
+            isBookmarked: false,
+            isActive: true,
+            comments: []
+        };
+
+        setPosts(prev => [newPost, ...prev]);
+        closeCreateModal();
+    };
+
+    const renderLightboxMedia = (post: Post) => {
+        const type = (post.contentType || '').toUpperCase();
+        const isVideoEmbed = post.embed && (post.embed.provider === 'youtube' || post.embed.provider === 'vimeo');
+        const iframeTypes = new Set(['PDF', 'SPREADSHEET', 'TEXT', 'PRESENTATION', 'H5P', 'GENIALLY']);
+
+        if (type === 'QUIZ') {
+            return (
+                <div className="w-full h-full flex items-center justify-center p-8">
+                    <div className="max-w-xl text-center text-white">
+                        <Icon name="quiz" size="lg" className="mb-4" />
+                        <h3 className="text-2xl font-bold mb-2">Quiz do Konquest</h3>
+                        <p className="text-white/80">Este pulse possui formato de questionário interativo.</p>
+                    </div>
+                </div>
+            );
+        }
+
+        if (type === 'PODCAST' && post.mediaUrl) {
+            return (
+                <div className="w-full h-full flex items-center justify-center p-8">
+                    <div className="w-full max-w-xl bg-white/10 rounded-xl p-6">
+                        <h3 className="text-white font-bold mb-4">Podcast</h3>
+                        <audio controls className="w-full">
+                            <source src={post.mediaUrl} />
+                        </audio>
+                    </div>
+                </div>
+            );
+        }
+
+        if (type === 'VIDEO') {
+            if (isVideoEmbed && post.embed) {
+                return (
+                    <iframe
+                        src={post.embed.embedUrl}
+                        title={`Embedded content for post ${post.id}`}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="w-full h-full"
+                    />
+                );
+            }
+            if (post.mediaUrl) {
+                return (
+                    <video controls className="w-full h-full object-contain bg-black">
+                        <source src={post.mediaUrl} />
+                    </video>
+                );
+            }
+        }
+
+        if (post.embed && iframeTypes.has(type)) {
+            return (
+                <iframe
+                    src={post.embed.embedUrl}
+                    title={`Embedded content for post ${post.id}`}
+                    frameBorder="0"
+                    allowFullScreen
+                    className="w-full h-full bg-white"
+                />
+            );
+        }
+
+        if (post.imageUrl) {
+            return <img src={post.imageUrl} alt="Post content" className="w-full h-full object-contain" />;
+        }
+
+        if (post.embed) {
+            return (
+                <iframe
+                    src={post.embed.embedUrl}
+                    title={`Embedded content for post ${post.id}`}
+                    frameBorder="0"
+                    allowFullScreen
+                    className="w-full h-full bg-white"
+                />
+            );
+        }
+
+        return (
+            <div className="p-8">
+                <p className="text-white text-lg leading-relaxed">{post.text}</p>
+            </div>
+        );
+    };
+
+    React.useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setActivePostId(null);
+            } else if (event.key === 'ArrowLeft') {
+                openPreviousPost();
+            } else if (event.key === 'ArrowRight') {
+                openNextPost();
+            }
+        };
+        if (activePostId) {
+            window.addEventListener('keydown', onKeyDown);
+        }
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activePostId, hasPreviousPost, hasNextPost, activePostIndex, filteredPosts]);
+
+    React.useEffect(() => {
+        setIsLightboxDescriptionExpanded(false);
+    }, [activePostId]);
 
     return (
         <div className="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
                 {/* Header & Tabs */}
-                <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-gray-200 pb-1">
-                    <div>
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            {viewMode === 'feed' ? 'Social' : 'Pulses'}
-                        </h1>
-                        <p className="text-sm text-gray-500">
-                            {viewMode === 'feed' 
-                                ? 'Acompanhe o que está acontecendo na sua rede' 
-                                : 'O termômetro de engajamento da sua rede'}
-                        </p>
-                    </div>
-                    
-                    <div className="flex bg-gray-200/50 p-1 rounded-lg">
+                <header className="pb-1">
+                    <div className="w-full flex items-center gap-2 bg-gray-200/50 p-1 rounded-lg">
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
                         <button 
                             onClick={() => setViewMode('feed')}
                             className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'feed' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
@@ -103,6 +647,43 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                             <Icon name="monitoring" size="sm" /> 
                             <span>Gestão</span>
                         </button>
+                        </div>
+                        {viewMode === 'feed' && (
+                            <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
+                                <button 
+                                    onClick={() => setFeedDisplayMode('timeline')}
+                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
+                                    title="Timeline"
+                                >
+                                    <Icon name="view_day" size="sm" />
+                                </button>
+                                <button 
+                                    onClick={() => setFeedDisplayMode('grid')}
+                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
+                                    title="Grid"
+                                >
+                                    <Icon name="grid_view" size="sm" />
+                                </button>
+                            </div>
+                        )}
+                        {viewMode !== 'feed' && (
+                            <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
+                                <button 
+                                    disabled
+                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
+                                    title="Timeline"
+                                >
+                                    <Icon name="view_day" size="sm" />
+                                </button>
+                                <button 
+                                    disabled
+                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
+                                    title="Grid"
+                                >
+                                    <Icon name="grid_view" size="sm" />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </header>
 
@@ -148,96 +729,161 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         </div>
                     </div>
                 ) : viewMode === 'channels' ? (
-                    <div className="animate-fadeIn">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {CHANNELS.map(channel => (
-                                <div key={channel.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow group">
-                                    <div className="h-32 bg-gray-100 relative overflow-hidden">
-                                        <img src={channel.imageUrl} alt={channel.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                        <div className="absolute top-3 right-3">
-                                            {channel.isSubscribed ? (
-                                                <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">Inscrito</span>
-                                            ) : (
-                                                <button className="bg-white/90 backdrop-blur-sm text-gray-800 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider hover:bg-white transition-colors">Seguir</button>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div className="p-5">
-                                        <h3 className="font-bold text-gray-900 mb-2"># {channel.name}</h3>
-                                        <p className="text-sm text-gray-500 line-clamp-2 mb-4">{channel.description}</p>
-                                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                                            <div className="flex -space-x-2">
-                                                {[1,2,3].map(i => (
-                                                    <img key={i} src={`https://i.pravatar.cc/32?u=chan-${channel.id}-${i}`} className="w-7 h-7 rounded-full border-2 border-white" alt="" />
-                                                ))}
-                                                <div className="w-7 h-7 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500">+12</div>
-                                            </div>
-                                            <button 
-                                                onClick={() => {
-                                                    setSelectedChannel(channel.id);
-                                                    setViewMode('feed');
-                                                }}
-                                                className="text-purple-600 text-sm font-bold hover:underline"
-                                            >
-                                                Ver Pulses
-                                            </button>
-                                        </div>
-                                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
+                        {/* Sidebar - Categories */}
+                        <aside className="space-y-6 lg:col-span-3 lg:order-1">
+                            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Icon name="category" size="sm" className="text-purple-600" />
+                                    Categorias
+                                </h3>
+                                <div className="space-y-3">
+                                    <button 
+                                        onClick={() => setSelectedCategory(null)}
+                                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedCategory ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        Todas as categorias
+                                    </button>
+                                    {availableCategories.map(category => (
+                                        <button
+                                            key={category}
+                                            onClick={() => setSelectedCategory(category)}
+                                            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedCategory === category ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                        >
+                                            {category}
+                                        </button>
+                                    ))}
                                 </div>
-                            ))}
+                            </div>
+                        </aside>
+
+                        {/* Main Channels */}
+                        <div className="lg:col-span-6 lg:order-2">
+                            <div className="grid grid-cols-1 gap-6">
+                                {channelsInSelectedCategory.map(channel => (
+                                    <div key={channel.id} className="relative bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow">
+                                        <details className="absolute top-3 right-3 z-10">
+                                            <summary className="list-none w-9 h-9 rounded-full bg-white/90 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-white [&::-webkit-details-marker]:hidden">
+                                                <Icon name="more_horiz" size="sm" />
+                                            </summary>
+                                            <div className="absolute right-0 mt-2 w-44 bg-white rounded-lg border border-gray-200 shadow-lg py-1">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleEditChannel(channel.id);
+                                                        (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                >
+                                                    Editar
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeactivateChannel(channel.id);
+                                                        (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
+                                                >
+                                                    Inativar
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDeleteChannel(channel.id);
+                                                        (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                    }}
+                                                    className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                                                >
+                                                    Excluir
+                                                </button>
+                                            </div>
+                                        </details>
+                                        <div className="flex gap-3">
+                                            {channel.imageUrl && !failedChannelCovers[channel.id] ? (
+                                                <img
+                                                    src={channel.imageUrl}
+                                                    alt={channel.name}
+                                                    className="w-32 h-32 rounded-lg object-cover flex-shrink-0"
+                                                    onError={() => markChannelCoverAsFailed(channel.id)}
+                                                />
+                                            ) : (
+                                                <div
+                                                    className="w-32 h-32 rounded-lg flex-shrink-0 relative overflow-hidden bg-cover bg-center"
+                                                    style={{ backgroundImage: `url(${KONQUEST_DEFAULT_COVER_IMAGE})` }}
+                                                >
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                                                </div>
+                                            )}
+                                            <div className="min-w-0 flex-1 flex flex-col">
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedChannel(channel.id);
+                                                        setViewMode('feed');
+                                                    }}
+                                                    className="text-left"
+                                                >
+                                                    <h3 className="font-bold text-gray-900 text-lg leading-tight line-clamp-1">{channel.name}</h3>
+                                                </button>
+                                                <p className="text-base text-gray-700 line-clamp-1">{channel.category || 'Geral'}</p>
+                                                <div className="mt-auto pt-4 border-t border-[#d4cbde] flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-2 text-xs text-gray-700">
+                                                        <span className="inline-flex items-center gap-1">
+                                                            <Icon name="public" size="sm" className="text-sm" />
+                                                            PT-BR
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1">
+                                                            <Icon name="visibility" size="sm" className="text-sm" />
+                                                            1
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1">
+                                                            <Icon name="person" size="sm" className="text-sm" />
+                                                            1
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleToggleChannelSubscription(channel.id)}
+                                                        className={`text-sm font-medium ${channel.isSubscribed ? 'text-green-700 hover:text-green-800' : 'text-purple-700 hover:text-purple-800'}`}
+                                                    >
+                                                        {channel.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
+
+                        {/* Sidebar - Trending Topics */}
+                        <aside className="space-y-6 lg:col-span-3 lg:order-3">
+                            <TopTopics />
+                            <EngagementLeaders />
+                        </aside>
                     </div>
                 ) : (
-                    <div className="flex flex-col lg:flex-row gap-8 animate-fadeIn">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
                         {/* Main Feed */}
-                        <div className="flex-1 space-y-6">
-                            {/* Feed Controls */}
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <button 
-                                        onClick={() => setFeedDisplayMode('timeline')}
-                                        className={`p-2 rounded-lg transition-colors ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
-                                        title="Timeline"
-                                    >
-                                        <Icon name="view_day" size="sm" />
-                                    </button>
-                                    <button 
-                                        onClick={() => setFeedDisplayMode('grid')}
-                                        className={`p-2 rounded-lg transition-colors ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
-                                        title="Grid"
-                                    >
-                                        <Icon name="grid_view" size="sm" />
-                                    </button>
-                                </div>
-                                {selectedChannel && (
-                                    <div className="flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100">
-                                        <span className="text-xs font-bold text-purple-700"># {CHANNELS_MAP[selectedChannel]?.name}</span>
-                                        <button onClick={() => setSelectedChannel(null)} className="text-purple-400 hover:text-purple-600">
-                                            <Icon name="close" size="xs" />
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
+                        <div className="space-y-6 lg:col-span-6 lg:order-2">
                             {/* New Post Input */}
                             {feedDisplayMode === 'timeline' && (
                                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                                     <div className="flex items-center gap-4 mb-4">
                                         <img src={USERS['user-4'].avatarUrl} className="w-12 h-12 rounded-full border border-gray-100" alt="" />
-                                        <button className="flex-1 text-left px-5 py-3 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors text-sm font-medium">
+                                        <button onClick={() => setIsCreateModalOpen(true)} className="flex-1 text-left px-5 py-3 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors text-sm font-medium">
                                             Compartilhe um aprendizado ou dúvida...
                                         </button>
                                     </div>
                                     <div className="flex items-center justify-between pt-3 border-t border-gray-100">
                                         <div className="flex gap-4">
-                                            <button className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-purple-600 transition-colors">
+                                            <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-purple-600 transition-colors">
                                                 <Icon name="image" size="sm" /> Foto/Vídeo
                                             </button>
-                                            <button className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-purple-600 transition-colors">
+                                            <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-purple-600 transition-colors">
                                                 <Icon name="poll" size="sm" /> Enquete
                                             </button>
                                         </div>
-                                        <button className="bg-purple-600 text-white h-10 px-6 rounded-full font-bold text-sm shadow-md hover:bg-purple-700 transition-colors">
+                                        <button onClick={() => setIsCreateModalOpen(true)} className="bg-purple-600 text-white h-10 px-6 rounded-full font-bold text-sm shadow-md hover:bg-purple-700 transition-colors">
                                             Pulser
                                         </button>
                                     </div>
@@ -249,48 +895,391 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <PostCard 
                                         key={post.id} 
                                         post={post} 
-                                        onLike={handleLike} 
+                                        onRate={handleRate} 
                                         onAddComment={handleAddComment}
                                         onChannelClick={setSelectedChannel}
+                                        channelName={channelsMap[post.channelId]?.name}
+                                        onEditPost={handleEditPost}
+                                        onDeletePost={handleDeletePost}
+                                        onDeactivatePost={handleDeactivatePost}
+                                        onEditComment={handleEditComment}
+                                        onDeleteComment={handleDeleteComment}
+                                        onOpenPost={setActivePostId}
                                         viewMode={feedDisplayMode === 'grid' ? 'grid' : 'list'}
+                                        isChannelSubscribed={!!channelsMap[post.channelId]?.isSubscribed}
+                                        onToggleChannelSubscription={handleToggleChannelSubscription}
+                                        onToggleBookmark={handleTogglePostBookmark}
                                     />
                                 ))}
                             </div>
                         </div>
 
-                        {/* Sidebar - Channels & Trends */}
-                        <aside className="w-full lg:w-80 space-y-6">
+                        {/* Sidebar - Channels & Pulses */}
+                        <aside className="space-y-6 lg:col-span-3 lg:order-1">
                             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                                 <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                                     <Icon name="hub" size="sm" className="text-purple-600" />
-                                    Seus Canais
+                                    Canais
                                 </h3>
-                                <div className="space-y-1">
+                                <div className="space-y-3">
                                     <button 
                                         onClick={() => setSelectedChannel(null)}
                                         className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedChannel ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
-                                        # Todos os Pulses
+                                        Todos os Pulses
                                     </button>
-                                    {CHANNELS.map(channel => (
-                                        <button 
-                                            key={channel.id}
-                                            onClick={() => setSelectedChannel(channel.id)}
-                                            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-between group ${selectedChannel === channel.id ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
+                                        <div className="space-y-1">
+                                            {subscribedChannels.map(channel => (
+                                                <div key={channel.id} className="flex items-center gap-2">
+                                                    <button 
+                                                        onClick={() => setSelectedChannel(channel.id)}
+                                                        className={`flex-1 text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedChannel === channel.id ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                                    >
+                                                        <span className="truncate block">{channel.name}</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleToggleChannelSubscription(channel.id)}
+                                                        className="w-8 h-8 rounded-full flex items-center justify-center text-green-600 hover:bg-green-50 transition-colors"
+                                                        title="Inscrito"
+                                                        aria-label={`Desinscrever de ${channel.name}`}
+                                                    >
+                                                        <Icon name="check_circle" size="sm" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Não inscritos</p>
+                                        <div className="space-y-1">
+                                            {unsubscribedChannels.map(channel => (
+                                                <div key={channel.id} className="flex items-center gap-2">
+                                                    <button 
+                                                        onClick={() => setSelectedChannel(channel.id)}
+                                                        className={`flex-1 text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedChannel === channel.id ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+                                                    >
+                                                        <span className="truncate block">{channel.name}</span>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleToggleChannelSubscription(channel.id)}
+                                                        className="w-8 h-8 rounded-full flex items-center justify-center text-purple-600 hover:bg-purple-50 transition-colors"
+                                                        title="Inscrever-se"
+                                                        aria-label={`Inscrever em ${channel.name}`}
+                                                    >
+                                                        <Icon name="add_circle" size="sm" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Icon name="category" size="sm" className="text-purple-600" />
+                                    Categorias
+                                </h3>
+                                <div className="space-y-1">
+                                    <button
+                                        onClick={() => setSelectedCategory(null)}
+                                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedCategory ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        Todas as categorias
+                                    </button>
+                                    {availableCategories.map(category => (
+                                        <button
+                                            key={category}
+                                            onClick={() => setSelectedCategory(category)}
+                                            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedCategory === category ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
                                         >
-                                            <span className="truncate"># {channel.name}</span>
-                                            {channel.isSubscribed && <Icon name="check_circle" size="sm" className="text-green-500 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                                            {category}
                                         </button>
                                     ))}
                                 </div>
                             </div>
+                        </aside>
 
+                        {/* Sidebar - Trending Topics */}
+                        <aside className="space-y-6 lg:col-span-3 lg:order-3">
                             <TopTopics />
                             <EngagementLeaders />
                         </aside>
                     </div>
                 )}
             </div>
+            {isCreateModalOpen && (
+                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={closeCreateModal}>
+                    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-900">Novo pulse</h2>
+                                {(createMainType || createSubtype) && (
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        {createMainType ? `Tipo: ${createMainType}` : ''}{createSubtype ? ` • Formato: ${createSubtype}` : ''}
+                                    </p>
+                                )}
+                            </div>
+                            <button onClick={closeCreateModal} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
+                                <Icon name="close" size="sm" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div>
+                                <p className="text-sm font-semibold text-gray-700 mb-2">1. Tipo de conteudo</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {CREATE_MAIN_OPTIONS.map(option => (
+                                        <button
+                                            key={option.type}
+                                            onClick={() => handleSelectMainType(option.type)}
+                                            className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors flex items-center gap-2 ${createMainType === option.type ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                        >
+                                            <Icon name={option.icon} size="sm" />
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {createMainType && (
+                                <div>
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">2. Formato</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {CREATE_SUB_OPTIONS[createMainType].map(option => (
+                                            <button
+                                                key={option.type}
+                                                onClick={() => handleSelectSubtype(option.type)}
+                                                className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors flex items-center gap-2 ${createSubtype === option.type ? 'border-purple-600 bg-purple-50 text-purple-700' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                            >
+                                                <Icon name={option.icon} size="sm" />
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {createSubtype && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Nome do conteudo</label>
+                                        <input
+                                            type="text"
+                                            value={createName}
+                                            onChange={(e) => setCreateName(e.target.value)}
+                                            className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            placeholder="Ex: Boas praticas de onboarding"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Canal</label>
+                                        <select
+                                            value={createChannelId}
+                                            onChange={(e) => setCreateChannelId(e.target.value)}
+                                            className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+                                        >
+                                            {activeChannels.map(channel => (
+                                                <option key={channel.id} value={channel.id}>{channel.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Descricao</label>
+                                        <textarea
+                                            value={createDescription}
+                                            onChange={(e) => setCreateDescription(e.target.value)}
+                                            rows={3}
+                                            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                                            placeholder="Escreva a descricao da publicacao"
+                                        />
+                                    </div>
+
+                                    {(createMainType === 'LINK' || createMainType === 'HTML') && (
+                                        <div className="md:col-span-2">
+                                            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Link do conteudo</label>
+                                            <input
+                                                type="url"
+                                                value={createExternalUrl}
+                                                onChange={(e) => setCreateExternalUrl(e.target.value)}
+                                                className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                                placeholder="Cole aqui a URL do conteudo"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {(createMainType === 'FILE' || createMainType === 'HTML') && (
+                                        <div className="md:col-span-2 flex items-center gap-3">
+                                            <input ref={uploadInputRef} type="file" className="hidden" onChange={handleSelectCreateFile} />
+                                            <button
+                                                type="button"
+                                                onClick={() => uploadInputRef.current?.click()}
+                                                className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                                            >
+                                                Anexar arquivo
+                                            </button>
+                                            <span className="text-sm text-gray-600 truncate">
+                                                {createFile ? createFile.name : 'Nenhum arquivo selecionado'}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Tempo (segundos)</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            value={createDuration}
+                                            onChange={(e) => setCreateDuration(Number(e.target.value || 1))}
+                                            className="mt-1 w-full h-11 px-3 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-end gap-2">
+                            <button onClick={backCreateStep} className="h-11 px-4 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                                Voltar
+                            </button>
+                            <button
+                                onClick={handleSubmitCreatePulse}
+                                disabled={!canSubmitCreate}
+                                className="h-11 px-5 rounded-lg bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Publicar pulse
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {activePost && (
+                <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-0" onClick={() => setActivePostId(null)}>
+                    <div className="relative w-full h-full py-3 sm:py-4 lg:py-6 lg:px-20" onClick={(e) => e.stopPropagation()}>
+                        {hasPreviousPost && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPreviousPost();
+                                }}
+                                className="hidden lg:flex absolute left-4 top-1/2 -translate-y-1/2 z-50 w-12 h-12 rounded-full bg-white/90 text-gray-800 items-center justify-center hover:bg-white shadow-md"
+                                aria-label="Pulse anterior"
+                            >
+                                <Icon name="chevron_left" size="md" />
+                            </button>
+                        )}
+                        {hasNextPost && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openNextPost();
+                                }}
+                                className="hidden lg:flex absolute right-4 top-1/2 -translate-y-1/2 z-50 w-12 h-12 rounded-full bg-white/90 text-gray-800 items-center justify-center hover:bg-white shadow-md"
+                                aria-label="Próximo pulse"
+                            >
+                                <Icon name="chevron_right" size="md" />
+                            </button>
+                        )}
+                        <div className="w-full h-full bg-white rounded-xl lg:rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+                            <div className="lg:col-span-8 bg-black flex items-center justify-center min-h-[320px]">
+                                {renderLightboxMedia(activePost)}
+                            </div>
+                            <div className="lg:col-span-4 flex flex-col h-full">
+                                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <img src={USERS[activePost.userId]?.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
+                                        <div>
+                                            <p className="font-semibold text-sm text-gray-900">{USERS[activePost.userId]?.name}</p>
+                                            <p className="text-xs text-gray-500">{channelsMap[activePost.channelId]?.name}</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setActivePostId(null)} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
+                                        <Icon name="close" size="sm" />
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                    <div>
+                                        <p className={`text-sm text-gray-800 whitespace-pre-wrap ${isLightboxDescriptionExpanded ? '' : 'line-clamp-4'}`}>
+                                            <span className="font-semibold mr-1">{USERS[activePost.userId]?.name}</span>
+                                            {activePost.text}
+                                        </p>
+                                        {activePost.text && activePost.text.length > 180 && (
+                                            <button
+                                                onClick={() => setIsLightboxDescriptionExpanded(prev => !prev)}
+                                                className="mt-1 text-xs font-semibold text-gray-500 hover:text-gray-800"
+                                            >
+                                                {isLightboxDescriptionExpanded ? 'Ver menos' : 'Ver mais'}
+                                            </button>
+                                        )}
+                                        <p className="text-xs text-gray-400 mt-2">{activePost.timestamp}</p>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {activePost.comments.map(comment => (
+                                            <div key={comment.id} className="text-sm text-gray-800 flex items-start justify-between gap-2">
+                                                <div>
+                                                    <span className="font-semibold mr-1">{USERS[comment.userId]?.name}</span>
+                                                    <span>{comment.text}</span>
+                                                </div>
+                                                {comment.userId === 'user-4' && (
+                                                    <details className="relative shrink-0">
+                                                        <summary className="list-none p-1 rounded-full text-gray-500 hover:bg-gray-100 cursor-pointer [&::-webkit-details-marker]:hidden">
+                                                            <Icon name="more_horiz" size="sm" />
+                                                        </summary>
+                                                        <div className="absolute right-0 mt-1 w-32 bg-white rounded-lg border border-gray-200 shadow-lg py-1 z-20">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleEditComment(activePost.id, comment.id);
+                                                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                }}
+                                                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                            >
+                                                                Editar
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteComment(activePost.id, comment.id);
+                                                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
+                                                                }}
+                                                                className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
+                                                            >
+                                                                Excluir
+                                                            </button>
+                                                        </div>
+                                                    </details>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <form
+                                    className="border-t border-gray-200 p-3 flex items-center gap-2"
+                                    onSubmit={(e) => {
+                                        e.preventDefault();
+                                        if (!lightboxCommentText.trim()) return;
+                                        handleAddComment(activePost.id, lightboxCommentText.trim());
+                                        setLightboxCommentText('');
+                                    }}
+                                >
+                                    <input
+                                        type="text"
+                                        value={lightboxCommentText}
+                                        onChange={(e) => setLightboxCommentText(e.target.value)}
+                                        placeholder="Adicione um comentário..."
+                                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    />
+                                    <button type="submit" className="px-3 py-2 text-sm font-semibold text-purple-600 hover:text-purple-800">
+                                        Publicar
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             <style>{`
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }

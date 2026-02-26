@@ -62,9 +62,11 @@ export type ViewMode = 'list' | 'grid';
 export interface Channel {
   id: string;
   name: string;
+  category?: string;
   description: string;
   imageUrl: string;
   isSubscribed: boolean;
+  isActive?: boolean;
 }
 
 export interface Comment {
@@ -76,7 +78,16 @@ export interface Comment {
 }
 
 export interface PostEmbed {
-  provider: 'youtube' | string;
+  provider:
+    | 'youtube'
+    | 'vimeo'
+    | 'google_docs'
+    | 'google_sheets'
+    | 'google_slides'
+    | 'h5p'
+    | 'genially'
+    | 'pdf'
+    | string;
   embedUrl: string;
 }
 
@@ -88,10 +99,15 @@ export interface Post {
   text: string;
   timestamp: string;
   imageUrl?: string;
+  mediaUrl?: string;
   embed?: PostEmbed;
+  rating: number;
+  ratingVotes: number;
+  userRating?: number;
   likes: number;
   commentCount: number;
   isLiked: boolean;
   isBookmarked?: boolean;
+  isActive?: boolean;
   comments: Comment[];
 }
