@@ -1181,7 +1181,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                 <div className="mb-4">
                     <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                        <Icon name="auto_awesome" size="sm" className="text-purple-600" />
+                        <Icon name="adjust" size="sm" className="text-purple-600" />
                         Pulses em Destaque
                     </h3>
                 </div>

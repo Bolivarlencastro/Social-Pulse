@@ -110,12 +110,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, current
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, []);
 
-  React.useEffect(() => {
-    if (currentView === 'gestaoConteudo') {
-      setIsAdminSubmenuOpen(true);
-    }
-  }, [currentView]);
-
   const handleMainNavClick = (item: typeof mainNavItems[0]) => {
     analytics.track('sidebar_nav_clicked', { item: item.id, target_view: item.targetView });
     onViewChange(item.targetView);
