@@ -6,11 +6,10 @@ import { PulsesTable } from './PulsesTable';
 import { Icon } from '../Icon';
 import { KpiCard } from '../KpiCard';
 import { SentimentChart } from './SentimentChart';
-import { TopTopics } from './TopTopics';
-import { EngagementLeaders } from './EngagementLeaders';
 import { Post, Comment, Channel } from '../../types';
 
 type SocialViewMode = 'feed' | 'management' | 'channels';
+type FeedQuickFilter = 'all' | 'featured' | 'favorites';
 type CreateMainType = 'FILE' | 'LINK' | 'QUIZ' | 'HTML' | null;
 type CreateSubtype =
     | 'VIDEO'
@@ -82,15 +81,20 @@ interface SocialPageProps {
 }
 
 export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed' }) => {
+    const currentUserId = 'user-4';
     const [viewMode, setViewMode] = useState<SocialViewMode>(initialViewMode);
     const [feedDisplayMode, setFeedDisplayMode] = useState<'timeline' | 'grid'>('timeline');
+    const [feedQuickFilter, setFeedQuickFilter] = useState<FeedQuickFilter>('all');
     const [posts, setPosts] = useState<Post[]>(() => POSTS.map(post => ({ ...post, isActive: post.isActive ?? true })));
     const [channels, setChannels] = useState<Channel[]>(() => CHANNELS.map(channel => ({ ...channel, isActive: channel.isActive ?? true })));
     const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [activePostId, setActivePostId] = useState<string | null>(null);
+    const [isLightboxSidebarCollapsed, setIsLightboxSidebarCollapsed] = useState(false);
     const [lightboxCommentText, setLightboxCommentText] = useState('');
     const [isLightboxDescriptionExpanded, setIsLightboxDescriptionExpanded] = useState(false);
+    const [isLightboxRatingMenuOpen, setIsLightboxRatingMenuOpen] = useState(false);
+    const [lightboxActionToastMessage, setLightboxActionToastMessage] = useState<string | null>(null);
     const [failedChannelCovers, setFailedChannelCovers] = useState<Record<string, boolean>>({});
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [createMainType, setCreateMainType] = useState<CreateMainType>(null);
@@ -102,6 +106,8 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const [createChannelId, setCreateChannelId] = useState<string>(() => CHANNELS[0]?.id || '');
     const [createDuration, setCreateDuration] = useState<number>(60);
     const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
+    const lightboxRatingMenuRef = React.useRef<HTMLDivElement | null>(null);
+    const lightboxCommentInputRef = React.useRef<HTMLInputElement | null>(null);
 
     const channelsMap = React.useMemo(
         () => channels.reduce((acc, channel) => {
@@ -237,6 +243,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         setPosts(prev => prev.map(p => p.id === postId ? { ...p, isBookmarked: !p.isBookmarked } : p));
     };
 
+    const showLightboxActionToast = (message: string) => {
+        setLightboxActionToastMessage(message);
+        window.setTimeout(() => setLightboxActionToastMessage(null), 2200);
+    };
+
     const handleEditChannel = (channelId: string) => {
         const channel = channels.find(c => c.id === channelId);
         if (!channel) return;
@@ -278,12 +289,15 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     };
 
     const activeChannels = channels.filter(channel => channel.isActive !== false);
+    const myOwnedChannels = activeChannels.filter(channel => channel.ownerId === currentUserId);
     const subscribedChannels = activeChannels.filter(channel => channel.isSubscribed);
-    const unsubscribedChannels = activeChannels.filter(channel => !channel.isSubscribed);
     const availableCategories = Array.from(new Set(activeChannels.map(channel => channel.category || 'Geral')));
     const channelsInSelectedCategory = selectedCategory
         ? activeChannels.filter(channel => (channel.category || 'Geral') === selectedCategory)
         : activeChannels;
+    const channelsFilteredForList = selectedChannel
+        ? channelsInSelectedCategory.filter(channel => channel.id === selectedChannel)
+        : channelsInSelectedCategory;
     const activeChannelIds = new Set(activeChannels.map(channel => channel.id));
     const visiblePosts = posts.filter(post => post.isActive !== false && activeChannelIds.has(post.channelId));
     const postsByCategory = selectedCategory
@@ -292,19 +306,54 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const filteredPosts = selectedChannel
         ? postsByCategory.filter(p => p.channelId === selectedChannel)
         : postsByCategory;
+    const displayedFeedPosts = React.useMemo(() => {
+        if (feedQuickFilter === 'favorites') {
+            return filteredPosts.filter(post => !!post.isBookmarked);
+        }
+        if (feedQuickFilter === 'featured') {
+            return [...filteredPosts].sort((a, b) => {
+                if (b.rating !== a.rating) return b.rating - a.rating;
+                return (b.ratingVotes || 0) - (a.ratingVotes || 0);
+            });
+        }
+        return filteredPosts;
+    }, [feedQuickFilter, filteredPosts]);
+    const featuredPreviewPosts = React.useMemo(
+        () => [...visiblePosts].sort((a, b) => b.rating - a.rating).slice(0, 3),
+        [visiblePosts]
+    );
+    const favoritePreviewPosts = React.useMemo(
+        () => visiblePosts.filter(post => !!post.isBookmarked).slice(0, 3),
+        [visiblePosts]
+    );
+    const selectedChannelName = selectedChannel ? channelsMap[selectedChannel]?.name || 'Canal selecionado' : null;
+    const hasFilterSelection = !!selectedChannel || !!selectedCategory;
+    const emptyFeedTitle = hasFilterSelection
+        ? 'Nenhum pulse encontrado para este filtro'
+        : 'Nenhum pulse disponível no momento';
+    const emptyFeedDescription = selectedChannelName
+        ? `Não há pulses publicados no canal ${selectedChannelName}.`
+        : selectedCategory
+            ? `Não há pulses publicados na categoria ${selectedCategory}.`
+            : 'Ainda não existem pulses ativos para exibição no feed social.';
+    const quickFilterLabel = feedQuickFilter === 'featured'
+        ? 'Pulses em destaque'
+        : feedQuickFilter === 'favorites'
+            ? 'Pulses favoritos'
+            : '';
     const activePost = activePostId ? posts.find(post => post.id === activePostId) : null;
-    const activePostIndex = activePostId ? filteredPosts.findIndex(post => post.id === activePostId) : -1;
+    const activePostIndex = activePostId ? displayedFeedPosts.findIndex(post => post.id === activePostId) : -1;
     const hasPreviousPost = activePostIndex > 0;
-    const hasNextPost = activePostIndex >= 0 && activePostIndex < filteredPosts.length - 1;
+    const hasNextPost = activePostIndex >= 0 && activePostIndex < displayedFeedPosts.length - 1;
 
     const openPreviousPost = () => {
         if (!hasPreviousPost) return;
-        setActivePostId(filteredPosts[activePostIndex - 1].id);
+        setActivePostId(displayedFeedPosts[activePostIndex - 1].id);
     };
 
     const openNextPost = () => {
         if (!hasNextPost) return;
-        setActivePostId(filteredPosts[activePostIndex + 1].id);
+        setActivePostId(displayedFeedPosts[activePostIndex + 1].id);
     };
 
     const markChannelCoverAsFailed = (channelId: string) => {
@@ -496,6 +545,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             timestamp: createdAt,
             imageUrl,
             mediaUrl,
+            durationSeconds: createDuration,
             embed,
             rating: 0,
             ratingVotes: 0,
@@ -613,82 +663,194 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             window.addEventListener('keydown', onKeyDown);
         }
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [activePostId, hasPreviousPost, hasNextPost, activePostIndex, filteredPosts]);
+    }, [activePostId, hasPreviousPost, hasNextPost, activePostIndex, displayedFeedPosts]);
 
     React.useEffect(() => {
         setIsLightboxDescriptionExpanded(false);
+        setIsLightboxSidebarCollapsed(false);
     }, [activePostId]);
+
+    React.useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            if (lightboxRatingMenuRef.current && !lightboxRatingMenuRef.current.contains(event.target as Node)) {
+                setIsLightboxRatingMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, []);
+
+    const renderTabsBar = () => (
+        <div className="w-full flex items-center gap-2 bg-gray-200/50 p-1 rounded-lg">
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+            <button
+                onClick={() => setViewMode('feed')}
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'feed' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+                <Icon name="dynamic_feed" size="sm" />
+                <span>Feed Social</span>
+            </button>
+            <button
+                onClick={() => setViewMode('channels')}
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'channels' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+                <Icon name="hub" size="sm" />
+                <span>Canais</span>
+            </button>
+            </div>
+            {viewMode === 'feed' && (
+                <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
+                    <button
+                        onClick={() => setFeedDisplayMode('timeline')}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
+                        title="Timeline"
+                    >
+                        <Icon name="view_day" size="sm" />
+                    </button>
+                    <button
+                        onClick={() => setFeedDisplayMode('grid')}
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
+                        title="Grid"
+                    >
+                        <Icon name="grid_view" size="sm" />
+                    </button>
+                </div>
+            )}
+            {viewMode !== 'feed' && (
+                <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
+                    <button
+                        disabled
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
+                        title="Timeline"
+                    >
+                        <Icon name="view_day" size="sm" />
+                    </button>
+                    <button
+                        disabled
+                        className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
+                        title="Grid"
+                    >
+                        <Icon name="grid_view" size="sm" />
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+
+    const renderChannelSidebarOption = (channel: Channel) => (
+        <button
+            key={channel.id}
+            onClick={() => setSelectedChannel(channel.id)}
+            className={`w-full text-left px-2 py-2 rounded-lg text-sm font-medium transition-all ${selectedChannel === channel.id ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
+        >
+            <div className="min-w-0 flex-1">
+                <span className="truncate block text-sm">{channel.name}</span>
+            </div>
+        </button>
+    );
+
+    const renderPulseDiscoveryCards = () => (
+        <>
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                        <Icon name="auto_awesome" size="sm" className="text-purple-600" />
+                        Pulses em Destaque
+                    </h3>
+                    <button
+                        onClick={() => {
+                            setFeedQuickFilter('featured');
+                            setViewMode('feed');
+                        }}
+                        className="text-sm font-semibold text-purple-600 hover:text-purple-700"
+                    >
+                        Ver todos
+                    </button>
+                </div>
+                {featuredPreviewPosts.length > 0 ? (
+                    <div className="space-y-2">
+                        {featuredPreviewPosts.map(post => (
+                            <button
+                                key={post.id}
+                                onClick={() => {
+                                    setFeedQuickFilter('featured');
+                                    setViewMode('feed');
+                                }}
+                                className="w-full text-left px-2 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <img
+                                        src={post.imageUrl || KONQUEST_DEFAULT_COVER_IMAGE}
+                                        alt=""
+                                        className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
+                                        loading="lazy"
+                                    />
+                                    <p className="truncate">{post.text}</p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-gray-500">Ainda não há pulses em destaque.</p>
+                )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                        <Icon name="bookmark" size="sm" className="text-purple-600" />
+                        Pulses Favoritos
+                    </h3>
+                    <button
+                        onClick={() => {
+                            setFeedQuickFilter('favorites');
+                            setViewMode('feed');
+                        }}
+                        className="text-sm font-semibold text-purple-600 hover:text-purple-700"
+                    >
+                        Ver todos
+                    </button>
+                </div>
+                {favoritePreviewPosts.length > 0 ? (
+                    <div className="space-y-2">
+                        {favoritePreviewPosts.map(post => (
+                            <button
+                                key={post.id}
+                                onClick={() => {
+                                    setFeedQuickFilter('favorites');
+                                    setViewMode('feed');
+                                }}
+                                className="w-full text-left px-2 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <img
+                                        src={post.imageUrl || KONQUEST_DEFAULT_COVER_IMAGE}
+                                        alt=""
+                                        className="w-10 h-10 rounded-md object-cover flex-shrink-0 bg-gray-100"
+                                        loading="lazy"
+                                    />
+                                    <p className="truncate">{post.text}</p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-gray-500">Você ainda não possui pulses favoritos.</p>
+                )}
+            </div>
+        </>
+    );
 
     return (
         <div className="flex-1 overflow-y-auto bg-gray-50 p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto space-y-8">
-                {/* Header & Tabs */}
-                <header className="pb-1">
-                    <div className="w-full flex items-center gap-2 bg-gray-200/50 p-1 rounded-lg">
-                        <div className="flex items-center gap-1 flex-1 min-w-0">
-                        <button 
-                            onClick={() => setViewMode('feed')}
-                            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'feed' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            <Icon name="dynamic_feed" size="sm" /> 
-                            <span>Feed Social</span>
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('channels')}
-                            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'channels' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            <Icon name="hub" size="sm" /> 
-                            <span>Canais</span>
-                        </button>
-                        <button 
-                            onClick={() => setViewMode('management')}
-                            className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${viewMode === 'management' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                        >
-                            <Icon name="monitoring" size="sm" /> 
-                            <span>Gestão</span>
-                        </button>
-                        </div>
-                        {viewMode === 'feed' && (
-                            <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
-                                <button 
-                                    onClick={() => setFeedDisplayMode('timeline')}
-                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
-                                    title="Timeline"
-                                >
-                                    <Icon name="view_day" size="sm" />
-                                </button>
-                                <button 
-                                    onClick={() => setFeedDisplayMode('grid')}
-                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-600' : 'text-gray-400 hover:bg-gray-100'}`}
-                                    title="Grid"
-                                >
-                                    <Icon name="grid_view" size="sm" />
-                                </button>
-                            </div>
-                        )}
-                        {viewMode !== 'feed' && (
-                            <div className="pl-2 border-l border-gray-300 flex items-center gap-2 shrink-0">
-                                <button 
-                                    disabled
-                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'timeline' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
-                                    title="Timeline"
-                                >
-                                    <Icon name="view_day" size="sm" />
-                                </button>
-                                <button 
-                                    disabled
-                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors cursor-not-allowed ${feedDisplayMode === 'grid' ? 'bg-purple-100 text-purple-400' : 'text-gray-300 bg-gray-100'}`}
-                                    title="Grid"
-                                >
-                                    <Icon name="grid_view" size="sm" />
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </header>
-
                 {viewMode === 'management' ? (
                     <div className="space-y-8 animate-fadeIn">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                            <div className="lg:col-span-6 lg:col-start-4">
+                                {renderTabsBar()}
+                            </div>
+                        </div>
                         {/* KPI Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <KpiCard label="Atividade Semanal" value="8.420" trend={{ value: 12, isUp: true }} icon="insights" color="purple" />
@@ -723,15 +885,47 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
 
                             {/* Rankings & Topics Section */}
                             <div className="space-y-8">
-                                <TopTopics />
-                                <EngagementLeaders />
+                                {renderPulseDiscoveryCards()}
                             </div>
                         </div>
                     </div>
                 ) : viewMode === 'channels' ? (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
-                        {/* Sidebar - Categories */}
+                        {/* Sidebar - Channels & Categories */}
                         <aside className="space-y-6 lg:col-span-3 lg:order-1">
+                            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                                <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <Icon name="hub" size="sm" className="text-purple-600" />
+                                    Canais
+                                </h3>
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={() => {
+                                            setSelectedChannel(null);
+                                            setFeedQuickFilter('all');
+                                        }}
+                                        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedChannel ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        Todos os canais
+                                    </button>
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Criados por mim</p>
+                                        <div className="space-y-1">
+                                            {myOwnedChannels.length > 0 ? (
+                                                myOwnedChannels.map(channel => renderChannelSidebarOption(channel))
+                                            ) : (
+                                                <p className="px-3 py-2 text-xs text-gray-400">Você ainda não criou canais.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
+                                        <div className="space-y-1">
+                                            {subscribedChannels.map(channel => renderChannelSidebarOption(channel))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                                 <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                                     <Icon name="category" size="sm" className="text-purple-600" />
@@ -739,7 +933,10 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </h3>
                                 <div className="space-y-3">
                                     <button 
-                                        onClick={() => setSelectedCategory(null)}
+                                        onClick={() => {
+                                            setSelectedCategory(null);
+                                            setFeedQuickFilter('all');
+                                        }}
                                         className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedCategory ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
                                         Todas as categorias
@@ -758,9 +955,10 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         </aside>
 
                         {/* Main Channels */}
-                        <div className="lg:col-span-6 lg:order-2">
+                        <div className="lg:col-span-6 lg:order-2 space-y-6">
+                            {renderTabsBar()}
                             <div className="grid grid-cols-1 gap-6">
-                                {channelsInSelectedCategory.map(channel => (
+                                {channelsFilteredForList.map(channel => (
                                     <div key={channel.id} className="relative bg-white rounded-xl border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow">
                                         <details className="absolute top-3 right-3 z-10">
                                             <summary className="list-none w-9 h-9 rounded-full bg-white/90 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-white [&::-webkit-details-marker]:hidden">
@@ -855,63 +1053,86 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                             </div>
                         </div>
 
-                        {/* Sidebar - Trending Topics */}
+                        {/* Sidebar - Highlights */}
                         <aside className="space-y-6 lg:col-span-3 lg:order-3">
-                            <TopTopics />
-                            <EngagementLeaders />
+                            {renderPulseDiscoveryCards()}
                         </aside>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
                         {/* Main Feed */}
                         <div className="space-y-6 lg:col-span-6 lg:order-2">
+                            {renderTabsBar()}
+                            {feedQuickFilter !== 'all' && (
+                                <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+                                    <p className="text-sm text-purple-900">
+                                        Filtro ativo: <span className="font-semibold">{quickFilterLabel}</span>
+                                    </p>
+                                    <button
+                                        onClick={() => setFeedQuickFilter('all')}
+                                        className="text-sm font-semibold text-purple-700 hover:text-purple-800"
+                                    >
+                                        Remover filtro
+                                    </button>
+                                </div>
+                            )}
                             {/* New Post Input */}
                             {feedDisplayMode === 'timeline' && (
                                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                                    <div className="flex items-center gap-4 mb-4">
+                                    <div className="flex items-center gap-4">
                                         <img src={USERS['user-4'].avatarUrl} className="w-12 h-12 rounded-full border border-gray-100" alt="" />
                                         <button onClick={() => setIsCreateModalOpen(true)} className="flex-1 text-left px-5 py-3 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors text-sm font-medium">
                                             Compartilhe um aprendizado ou dúvida...
                                         </button>
                                     </div>
-                                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                                        <div className="flex gap-4">
-                                            <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-purple-600 transition-colors">
-                                                <Icon name="image" size="sm" /> Foto/Vídeo
-                                            </button>
-                                            <button onClick={() => setIsCreateModalOpen(true)} className="flex items-center gap-2 text-sm font-semibold text-gray-600 hover:text-purple-600 transition-colors">
-                                                <Icon name="poll" size="sm" /> Enquete
-                                            </button>
-                                        </div>
-                                        <button onClick={() => setIsCreateModalOpen(true)} className="bg-purple-600 text-white h-10 px-6 rounded-full font-bold text-sm shadow-md hover:bg-purple-700 transition-colors">
-                                            Pulser
-                                        </button>
-                                    </div>
                                 </div>
                             )}
 
-                            <div className={feedDisplayMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'space-y-6'}>
-                                {filteredPosts.map(post => (
-                                    <PostCard 
-                                        key={post.id} 
-                                        post={post} 
-                                        onRate={handleRate} 
-                                        onAddComment={handleAddComment}
-                                        onChannelClick={setSelectedChannel}
-                                        channelName={channelsMap[post.channelId]?.name}
-                                        onEditPost={handleEditPost}
-                                        onDeletePost={handleDeletePost}
-                                        onDeactivatePost={handleDeactivatePost}
-                                        onEditComment={handleEditComment}
-                                        onDeleteComment={handleDeleteComment}
-                                        onOpenPost={setActivePostId}
-                                        viewMode={feedDisplayMode === 'grid' ? 'grid' : 'list'}
-                                        isChannelSubscribed={!!channelsMap[post.channelId]?.isSubscribed}
-                                        onToggleChannelSubscription={handleToggleChannelSubscription}
-                                        onToggleBookmark={handleTogglePostBookmark}
-                                    />
-                                ))}
-                            </div>
+                            {displayedFeedPosts.length === 0 ? (
+                                <div className="bg-white rounded-xl border border-dashed border-gray-300 p-8 shadow-sm text-center">
+                                    <div className="w-14 h-14 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-4">
+                                        <Icon name="inbox" size="md" />
+                                    </div>
+                                    <h3 className="text-base font-bold text-gray-900">{emptyFeedTitle}</h3>
+                                    <p className="text-sm text-gray-500 mt-1">{emptyFeedDescription}</p>
+                                    {hasFilterSelection && (
+                                        <button
+                                            onClick={() => {
+                                                setSelectedChannel(null);
+                                                setSelectedCategory(null);
+                                                setFeedQuickFilter('all');
+                                            }}
+                                            className="mt-5 inline-flex items-center gap-2 px-4 h-10 rounded-full text-sm font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 transition-colors"
+                                        >
+                                            <Icon name="filter_alt_off" size="sm" />
+                                            Limpar filtros
+                                        </button>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className={feedDisplayMode === 'grid' ? 'grid grid-cols-2 sm:grid-cols-3 gap-4' : 'space-y-6'}>
+                                    {displayedFeedPosts.map(post => (
+                                        <PostCard 
+                                            key={post.id} 
+                                            post={post} 
+                                            onRate={handleRate} 
+                                            onAddComment={handleAddComment}
+                                            onChannelClick={setSelectedChannel}
+                                            channelName={channelsMap[post.channelId]?.name}
+                                            onEditPost={handleEditPost}
+                                            onDeletePost={handleDeletePost}
+                                            onDeactivatePost={handleDeactivatePost}
+                                            onEditComment={handleEditComment}
+                                            onDeleteComment={handleDeleteComment}
+                                            onOpenPost={setActivePostId}
+                                            viewMode={feedDisplayMode === 'grid' ? 'grid' : 'list'}
+                                            isChannelSubscribed={!!channelsMap[post.channelId]?.isSubscribed}
+                                            onToggleChannelSubscription={handleToggleChannelSubscription}
+                                            onToggleBookmark={handleTogglePostBookmark}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* Sidebar - Channels & Pulses */}
@@ -923,55 +1144,28 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </h3>
                                 <div className="space-y-3">
                                     <button 
-                                        onClick={() => setSelectedChannel(null)}
+                                        onClick={() => {
+                                            setSelectedChannel(null);
+                                            setFeedQuickFilter('all');
+                                        }}
                                         className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedChannel ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
-                                        Todos os Pulses
+                                        Feed principal
                                     </button>
                                     <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Criados por mim</p>
                                         <div className="space-y-1">
-                                            {subscribedChannels.map(channel => (
-                                                <div key={channel.id} className="flex items-center gap-2">
-                                                    <button 
-                                                        onClick={() => setSelectedChannel(channel.id)}
-                                                        className={`flex-1 text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedChannel === channel.id ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                                                    >
-                                                        <span className="truncate block">{channel.name}</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleToggleChannelSubscription(channel.id)}
-                                                        className="w-8 h-8 rounded-full flex items-center justify-center text-green-600 hover:bg-green-50 transition-colors"
-                                                        title="Inscrito"
-                                                        aria-label={`Desinscrever de ${channel.name}`}
-                                                    >
-                                                        <Icon name="check_circle" size="sm" />
-                                                    </button>
-                                                </div>
-                                            ))}
+                                            {myOwnedChannels.length > 0 ? (
+                                                myOwnedChannels.map(channel => renderChannelSidebarOption(channel))
+                                            ) : (
+                                                <p className="px-3 py-2 text-xs text-gray-400">Você ainda não criou canais.</p>
+                                            )}
                                         </div>
                                     </div>
                                     <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Não inscritos</p>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 px-2 mb-1">Inscritos</p>
                                         <div className="space-y-1">
-                                            {unsubscribedChannels.map(channel => (
-                                                <div key={channel.id} className="flex items-center gap-2">
-                                                    <button 
-                                                        onClick={() => setSelectedChannel(channel.id)}
-                                                        className={`flex-1 text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${selectedChannel === channel.id ? 'bg-purple-100 text-purple-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                                                    >
-                                                        <span className="truncate block">{channel.name}</span>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleToggleChannelSubscription(channel.id)}
-                                                        className="w-8 h-8 rounded-full flex items-center justify-center text-purple-600 hover:bg-purple-50 transition-colors"
-                                                        title="Inscrever-se"
-                                                        aria-label={`Inscrever em ${channel.name}`}
-                                                    >
-                                                        <Icon name="add_circle" size="sm" />
-                                                    </button>
-                                                </div>
-                                            ))}
+                                            {subscribedChannels.map(channel => renderChannelSidebarOption(channel))}
                                         </div>
                                     </div>
                                 </div>
@@ -984,7 +1178,10 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </h3>
                                 <div className="space-y-1">
                                     <button
-                                        onClick={() => setSelectedCategory(null)}
+                                        onClick={() => {
+                                            setSelectedCategory(null);
+                                            setFeedQuickFilter('all');
+                                        }}
                                         className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${!selectedCategory ? 'bg-purple-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-50'}`}
                                     >
                                         Todas as categorias
@@ -1002,10 +1199,9 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                             </div>
                         </aside>
 
-                        {/* Sidebar - Trending Topics */}
+                        {/* Sidebar - Highlights */}
                         <aside className="space-y-6 lg:col-span-3 lg:order-3">
-                            <TopTopics />
-                            <EngagementLeaders />
+                            {renderPulseDiscoveryCards()}
                         </aside>
                     </div>
                 )}
@@ -1180,10 +1376,33 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 <Icon name="chevron_right" size="md" />
                             </button>
                         )}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setActivePostId(null);
+                            }}
+                            className="hidden lg:flex absolute right-4 top-6 z-50 w-12 h-12 rounded-full bg-white/90 text-gray-800 items-center justify-center hover:bg-white shadow-md"
+                            aria-label="Fechar lightbox"
+                            title="Fechar"
+                        >
+                            <Icon name="close" size="md" />
+                        </button>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsLightboxSidebarCollapsed(prev => !prev);
+                            }}
+                            className="hidden lg:flex absolute right-4 top-20 z-50 w-12 h-12 rounded-full bg-white/90 text-gray-800 items-center justify-center hover:bg-white shadow-md"
+                            aria-label={isLightboxSidebarCollapsed ? 'Mostrar descrição e comentários' : 'Ocultar descrição e comentários'}
+                            title={isLightboxSidebarCollapsed ? 'Mostrar descrição e comentários' : 'Ocultar descrição e comentários'}
+                        >
+                            <Icon name={isLightboxSidebarCollapsed ? 'right_panel_open' : 'right_panel_close'} size="md" />
+                        </button>
                         <div className="w-full h-full bg-white rounded-xl lg:rounded-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12">
-                            <div className="lg:col-span-8 bg-black flex items-center justify-center min-h-[320px]">
+                            <div className={`${isLightboxSidebarCollapsed ? 'lg:col-span-12' : 'lg:col-span-8'} bg-black flex items-center justify-center min-h-[320px]`}>
                                 {renderLightboxMedia(activePost)}
                             </div>
+                            {!isLightboxSidebarCollapsed && (
                             <div className="lg:col-span-4 flex flex-col h-full">
                                 <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
                                     <div className="flex items-center gap-3">
@@ -1193,9 +1412,6 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                             <p className="text-xs text-gray-500">{channelsMap[activePost.channelId]?.name}</p>
                                         </div>
                                     </div>
-                                    <button onClick={() => setActivePostId(null)} className="w-9 h-9 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100">
-                                        <Icon name="close" size="sm" />
-                                    </button>
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -1255,8 +1471,86 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     </div>
                                 </div>
 
+                                <div className="border-t border-gray-200 px-3 pt-2 pb-1 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div ref={lightboxRatingMenuRef} className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsLightboxRatingMenuOpen(prev => !prev)}
+                                                className="w-10 h-10 rounded-full text-gray-700 hover:bg-gray-100 flex items-center justify-center"
+                                                aria-label="Avaliar pulse"
+                                            >
+                                                <Icon
+                                                    name="star"
+                                                    size="md"
+                                                    filled={(activePost.userRating ?? 0) > 0}
+                                                    className={(activePost.userRating ?? 0) > 0 ? 'text-amber-500' : ''}
+                                                />
+                                            </button>
+                                            {isLightboxRatingMenuOpen && (
+                                                <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-full shadow-lg px-2 py-1 z-20">
+                                                    <div className="flex items-center gap-1">
+                                                        {[1, 2, 3, 4, 5].map((star) => (
+                                                            <button
+                                                                key={star}
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleRate(activePost.id, star);
+                                                                    setIsLightboxRatingMenuOpen(false);
+                                                                }}
+                                                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"
+                                                                title={`Avaliar ${star} estrelas`}
+                                                            >
+                                                                <Icon
+                                                                    name="star"
+                                                                    size="sm"
+                                                                    filled={star <= (activePost.userRating ?? 0)}
+                                                                    className={star <= (activePost.userRating ?? 0) ? 'text-amber-500' : 'text-gray-300'}
+                                                                />
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => lightboxCommentInputRef.current?.focus()}
+                                            className="w-10 h-10 rounded-full text-gray-700 hover:bg-gray-100 flex items-center justify-center"
+                                            aria-label="Comentar"
+                                        >
+                                            <Icon name="chat_bubble" size="md" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const postUrl = `${window.location.origin}/pulse/${activePost.id}`;
+                                                try {
+                                                    await navigator.clipboard.writeText(postUrl);
+                                                    showLightboxActionToast('Link do pulse copiado.');
+                                                } catch (err) {
+                                                    console.error('Falha ao copiar o link: ', err);
+                                                    showLightboxActionToast('Nao foi possivel copiar o link.');
+                                                }
+                                            }}
+                                            className="w-10 h-10 rounded-full text-gray-700 hover:bg-gray-100 flex items-center justify-center"
+                                            aria-label="Compartilhar pulse"
+                                        >
+                                            <Icon name="send" size="md" className="-rotate-12" />
+                                        </button>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleTogglePostBookmark(activePost.id)}
+                                        className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${(activePost.isBookmarked ?? false) ? 'text-purple-700 bg-purple-50' : 'text-gray-700 hover:bg-gray-100'}`}
+                                        aria-label={(activePost.isBookmarked ?? false) ? 'Pulse salvo' : 'Salvar pulse'}
+                                    >
+                                        <Icon name="bookmark" size="md" filled={!!activePost.isBookmarked} />
+                                    </button>
+                                </div>
                                 <form
-                                    className="border-t border-gray-200 p-3 flex items-center gap-2"
+                                    className="p-3 pt-2"
                                     onSubmit={(e) => {
                                         e.preventDefault();
                                         if (!lightboxCommentText.trim()) return;
@@ -1264,19 +1558,30 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                         setLightboxCommentText('');
                                     }}
                                 >
-                                    <input
-                                        type="text"
-                                        value={lightboxCommentText}
-                                        onChange={(e) => setLightboxCommentText(e.target.value)}
-                                        placeholder="Adicione um comentário..."
-                                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                    />
-                                    <button type="submit" className="px-3 py-2 text-sm font-semibold text-purple-600 hover:text-purple-800">
-                                        Publicar
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            ref={lightboxCommentInputRef}
+                                            type="text"
+                                            value={lightboxCommentText}
+                                            onChange={(e) => setLightboxCommentText(e.target.value)}
+                                            placeholder="Adicione um comentário..."
+                                            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <button type="submit" className="px-3 py-2 text-sm font-semibold text-purple-600 hover:text-purple-800">
+                                            Publicar
+                                        </button>
+                                    </div>
                                 </form>
                             </div>
+                            )}
                         </div>
+                    </div>
+                </div>
+            )}
+            {lightboxActionToastMessage && (
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60]">
+                    <div className="inline-flex items-center rounded-md bg-gray-900 text-white text-xs px-3 py-1.5 shadow-lg">
+                        {lightboxActionToastMessage}
                     </div>
                 </div>
             )}

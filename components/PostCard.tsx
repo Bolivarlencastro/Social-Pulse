@@ -298,76 +298,150 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
       showActionToast(next ? 'Pulse salvo.' : 'Pulse removido dos salvos.');
   }
 
+  const getGridTitle = () => {
+      const raw = post.text?.trim() || 'Pulse sem título';
+      const firstSentence = raw.split(/[.!?]/)[0]?.trim() || raw;
+      return firstSentence.length > 44 ? `${firstSentence.slice(0, 44)}...` : firstSentence;
+  };
+
+  const getPulseTypeMeta = () => {
+      const type = (post.contentType || 'TEXT').toUpperCase();
+      switch (type) {
+          case 'VIDEO':
+              return { icon: 'play_circle', label: 'Vídeo' };
+          case 'PODCAST':
+              return { icon: 'graphic_eq', label: 'Podcast' };
+          case 'PDF':
+              return { icon: 'picture_as_pdf', label: 'PDF' };
+          case 'QUIZ':
+              return { icon: 'quiz', label: 'Question' };
+          case 'SPREADSHEET':
+              return { icon: 'table_view', label: 'Planilha' };
+          case 'PRESENTATION':
+              return { icon: 'slideshow', label: 'Apresentação' };
+          case 'GENIALLY':
+              return { icon: 'language', label: 'Genially' };
+          case 'H5P':
+              return { icon: 'html', label: 'H5P' };
+          default:
+              return { icon: 'description', label: 'Texto' };
+      }
+  };
+
+  const formatDuration = (seconds?: number) => {
+      const safeSeconds = typeof seconds === 'number' && seconds > 0
+          ? Math.floor(seconds)
+          : ((normalizedContentType === 'VIDEO' || normalizedContentType === 'PODCAST') ? 30 : 0);
+      if (!safeSeconds) return '--';
+      if (safeSeconds < 60) return `${safeSeconds} s`;
+      const min = Math.floor(safeSeconds / 60);
+      const sec = safeSeconds % 60;
+      return sec ? `${min} min ${sec}s` : `${min} min`;
+  };
+
+  const normalizedContentType = (post.contentType || '').toUpperCase();
+  const isVideoEmbed = !!post.embed && (post.embed.provider === 'youtube' || post.embed.provider === 'vimeo');
+  const isInlineVideo = normalizedContentType === 'VIDEO' && (isVideoEmbed || !!post.mediaUrl);
+  const isInlineAudio = normalizedContentType === 'PODCAST' && !!post.mediaUrl;
+  const inlineVideoLayout = post.mediaLayout === 'vertical' ? 'vertical' : 'horizontal';
+
+  const renderInlineFeedMedia = () => {
+      if (isInlineVideo) {
+          return (
+              <div className="w-full bg-black border-y border-gray-200">
+                  <div className={`mx-auto ${inlineVideoLayout === 'vertical' ? 'max-w-[420px]' : 'w-full'}`}>
+                      <div className={inlineVideoLayout === 'vertical' ? 'aspect-[9/16] w-full' : 'aspect-video w-full'}>
+                          {isVideoEmbed && post.embed ? (
+                              <iframe
+                                  src={post.embed.embedUrl}
+                                  className="w-full h-full"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                  title="Video do pulse"
+                              />
+                          ) : (
+                              <video className="w-full h-full object-contain" controls preload="metadata">
+                                  {post.mediaUrl && <source src={post.mediaUrl} />}
+                                  Seu navegador não suporta vídeo.
+                              </video>
+                          )}
+                      </div>
+                  </div>
+              </div>
+          );
+      }
+
+      if (isInlineAudio) {
+          return (
+              <div className="w-full border-y border-gray-200 bg-gray-50 px-4 py-5">
+                  <div className="max-w-2xl mx-auto space-y-3">
+                      {post.imageUrl && !hasImageError ? (
+                          <div className="aspect-square w-full max-w-[280px] rounded-xl overflow-hidden border border-gray-200 bg-white">
+                              <img src={post.imageUrl} alt="Capa do podcast" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
+                          </div>
+                      ) : (
+                          <EmptyCover className="aspect-square w-full max-w-[280px] rounded-xl" />
+                      )}
+                      <audio className="w-full" controls preload="metadata">
+                          {post.mediaUrl && <source src={post.mediaUrl} />}
+                          Seu navegador não suporta áudio.
+                      </audio>
+                  </div>
+              </div>
+          );
+      }
+
+      return null;
+  };
+
   if (viewMode === 'grid') {
+    const pulseMeta = getPulseTypeMeta();
     return (
-        <div className="relative aspect-square group bg-gray-200 cursor-pointer" onClick={() => onOpenPost?.(post.id)}>
-             {post.imageUrl && !hasImageError ? (
-                <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
-             ) : (
-                <EmptyCover className="w-full h-full" />
-             )}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm">
-                    <Icon name="play_arrow" size="md" />
-                </div>
-            </div>
-            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <div className="flex items-center gap-4 text-white font-bold">
-                    <div className="flex items-center gap-1.5">
-                        <Icon name="star" filled size="sm" />
-                        <span>{post.rating.toFixed(1)}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <Icon name="chat_bubble" size="sm" />
-                        <span>{post.commentCount}</span>
-                    </div>
-                </div>
-            </div>
-            {(onEditPost || onDeletePost || onDeactivatePost) && (
-                <details className="absolute top-2 right-2">
-                    <summary className="list-none w-12 h-12 aspect-square rounded-full bg-white/90 text-gray-700 flex items-center justify-center cursor-pointer hover:bg-white [&::-webkit-details-marker]:hidden">
-                        <Icon name="more_horiz" size="sm" />
-                    </summary>
-                    <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg border border-gray-200 shadow-lg py-1 z-20">
-                        {onEditPost && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onEditPost(post.id);
-                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                                Editar
-                            </button>
-                        )}
-                        {onDeactivatePost && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDeactivatePost(post.id);
-                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-amber-700 hover:bg-amber-50"
-                            >
-                                Inativar
-                            </button>
-                        )}
-                        {onDeletePost && (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onDeletePost(post.id);
-                                    (e.currentTarget.closest('details') as HTMLDetailsElement | null)?.removeAttribute('open');
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-red-700 hover:bg-red-50"
-                            >
-                                Excluir
-                            </button>
-                        )}
-                    </div>
-                </details>
+        <div
+            className="relative aspect-square rounded-xl sm:rounded-2xl overflow-hidden cursor-pointer shadow-[0_3px_6px_rgba(0,0,0,0.16),0_3px_6px_rgba(0,0,0,0.23)] p-2 sm:p-3 flex flex-col"
+            onClick={() => onOpenPost?.(post.id)}
+        >
+            {post.imageUrl && !hasImageError ? (
+                <img src={post.imageUrl} alt="Post content" className="absolute inset-0 w-full h-full object-cover" onError={() => setHasImageError(true)} />
+            ) : (
+                <EmptyCover className="absolute inset-0 w-full h-full" />
             )}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/10" />
+            {!post.isActive && (
+                <div className="absolute inset-0 bg-black/50 z-20">
+                    <span className="absolute top-0 left-0 px-3 py-1 text-[11px] font-semibold bg-black text-white rounded-br-xl">Inativo</span>
+                </div>
+            )}
+
+            <div className="relative z-10 mt-auto flex flex-col gap-1">
+                <p className="text-white font-bold text-xs sm:text-base leading-tight line-clamp-2">{getGridTitle()}</p>
+                <p className="text-white/90 text-[10px] sm:text-xs truncate">{displayedChannelName}</p>
+                <div className="h-[2px] w-full bg-white/35 rounded-full mt-1">
+                    <div className="h-full w-0 bg-white rounded-full" />
+                </div>
+            </div>
+
+            <div className="relative z-10 pt-1.5 flex items-center gap-1 text-white min-h-[40px]">
+                <div className="inline-flex items-center gap-1 px-1.5 py-1 rounded bg-black/25 text-[10px] sm:text-xs">
+                    <Icon name={pulseMeta.icon} size="sm" className="text-[14px]" />
+                    <span>{pulseMeta.label}</span>
+                </div>
+                <div className="inline-flex items-center gap-1 px-1.5 py-1 rounded bg-black/25 text-[10px] sm:text-xs">
+                    <Icon name="schedule" size="sm" className="text-[14px]" />
+                    <span>{formatDuration(post.durationSeconds)}</span>
+                </div>
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleBookmark();
+                    }}
+                    className="ml-auto w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10"
+                    aria-label={isBookmarked ? 'Pulse salvo' : 'Salvar pulse'}
+                >
+                    <Icon name="bookmark" size="sm" filled={isBookmarked} />
+                </button>
+            </div>
+
         </div>
     );
   }
@@ -463,27 +537,31 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
       </div>
 
 
-      {/* Post Content: cover first (feed behavior) */}
-      {post.imageUrl && !hasImageError ? (
-          <div className="w-full bg-gray-100 border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
-              <div className="aspect-square w-full">
-                  <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm">
-                      <Icon name="play_arrow" size="md" />
-                  </div>
-              </div>
-          </div>
+      {/* Post Content */}
+      {(isInlineVideo || isInlineAudio) ? (
+          renderInlineFeedMedia()
       ) : (
-          <div className="w-full border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
-              <EmptyCover className="aspect-square w-full" />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm">
-                      <Icon name="play_arrow" size="md" />
+          post.imageUrl && !hasImageError ? (
+              <div className="w-full bg-gray-100 border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
+                  <div className="aspect-square w-full">
+                      <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
+                  </div>
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
+                          <Icon name="play_arrow" size="md" />
+                      </div>
                   </div>
               </div>
-          </div>
+          ) : (
+              <div className="w-full border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
+                  <EmptyCover className="aspect-square w-full" />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
+                          <Icon name="play_arrow" size="md" />
+                      </div>
+                  </div>
+              </div>
+          )
       )}
 
 

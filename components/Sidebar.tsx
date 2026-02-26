@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Icon } from './Icon';
 import { analytics } from '../services/analytics';
@@ -12,10 +11,15 @@ interface SidebarProps {
 }
 
 const mainNavItems = [
-  { id: 'cursos', icon: 'school', label: 'Cursos', targetView: 'cursos' as View },
-  { id: 'pulses', icon: 'hub', label: 'Pulses', targetView: 'social' as View },
-  { id: 'usuarios', icon: 'group', label: 'Usuários', targetView: 'liderados' as View },
-  { id: 'painel', icon: 'settings', label: 'Painel de Gestão', targetView: 'visaoGeral' as View },
+  { id: 'home', icon: 'home', label: 'Home', targetView: 'visaoGeral' as View },
+  { id: 'pulses', icon: 'adjust', label: 'Pulses', targetView: 'social' as View },
+  { id: 'matriculas', icon: 'school', label: 'Matriculas', targetView: 'cursos' as View },
+  { id: 'ranking', icon: 'bar_chart', label: 'Ranking', targetView: 'liderados' as View },
+];
+
+const footerNavItems = [
+  { id: 'admin', icon: 'settings', label: 'Admin', targetView: 'visaoGeral' as View },
+  { id: 'help', icon: 'help', label: 'Ajuda', targetView: 'visaoGeral' as View },
 ];
 
 const NavItem: React.FC<{
@@ -25,25 +29,25 @@ const NavItem: React.FC<{
   isCollapsed: boolean;
   onClick?: () => void;
 }> = ({ icon, label, isActive = false, isCollapsed, onClick }) => {
-  const baseClasses = "w-full py-3 rounded-lg flex items-center gap-1 transition-colors";
-  const layoutClasses = isCollapsed ? "justify-center" : "px-2 flex-col text-center";
-  const activeClasses = "bg-purple-500 text-white";
-  const inactiveClasses = "text-purple-200 hover:bg-purple-500 hover:text-white";
-  
+  const baseClasses = 'w-full rounded-lg transition-colors';
+  const collapsedClasses = 'h-12 flex items-center justify-center';
+  const expandedClasses = 'min-h-[64px] px-2 py-2 flex flex-col items-center justify-center';
+  const activeClasses = 'bg-white/18 text-white';
+  const inactiveClasses = 'text-white/55 hover:text-white hover:bg-white/10';
+
   return (
     <button
       onClick={onClick}
-      className={`${baseClasses} ${layoutClasses} ${isActive ? activeClasses : inactiveClasses}`}
+      className={`${baseClasses} ${isCollapsed ? collapsedClasses : expandedClasses} ${isActive ? activeClasses : inactiveClasses}`}
       aria-label={label}
     >
-      <Icon name={icon} className="text-3xl" />
-      {!isCollapsed && <span className="text-xs font-medium break-words mt-1">{label}</span>}
+      <Icon name={icon} className={isCollapsed ? 'text-2xl' : 'text-xl'} />
+      {!isCollapsed && <span className="text-[11px] font-medium leading-4 text-center mt-1.5">{label}</span>}
     </button>
   );
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, currentView, onViewChange }) => {
-
   const handleMainNavClick = (item: typeof mainNavItems[0]) => {
     analytics.track('sidebar_nav_clicked', { item: item.id, target_view: item.targetView });
     onViewChange(item.targetView);
@@ -51,18 +55,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, current
 
   return (
     <aside
-      className={`bg-purple-900 p-2 flex flex-col items-center transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-[112px]'}`}
+      className={`bg-[#6236BF] text-white px-2 py-3 flex flex-col items-center transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-[112px]'}`}
       aria-label="Main Navigation"
     >
-        <div className="h-16 shrink-0 flex items-center justify-center w-full">
-            <button 
-                onClick={onToggle} 
-                className="text-purple-200 hover:bg-purple-500 hover:text-white rounded-full p-2 transition-colors"
-                aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
-            >
-                <Icon name={isCollapsed ? "menu_open" : "chevron_left"} />
-            </button>
-        </div>
+      <div className="h-20 shrink-0 flex items-center justify-center w-full">
+        <button
+          onClick={onToggle}
+          className="rounded-lg p-2 bg-white/20 hover:bg-white/30 transition-colors"
+          aria-label={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
+          title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
+        >
+          <img
+            src="https://assets.keepsdev.com/images/avatars/company_blue.png"
+            alt="Workspace logo"
+            className="w-10 h-10 rounded-md object-cover"
+          />
+        </button>
+      </div>
 
       <nav className="w-full space-y-2">
         {mainNavItems.map((item) => (
@@ -77,6 +86,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, current
         ))}
       </nav>
 
+      <div className="flex-1" />
+
+      <nav className="w-full space-y-2 mb-1">
+        {footerNavItems.map((item) => (
+          <NavItem
+            key={item.id}
+            icon={item.icon}
+            label={item.label}
+            isActive={false}
+            isCollapsed={isCollapsed}
+            onClick={() => handleMainNavClick(item)}
+          />
+        ))}
+      </nav>
     </aside>
   );
 };

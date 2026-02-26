@@ -39,6 +39,7 @@ export const CHANNELS: Channel[] = [
     description: 'Um canal para discutir as últimas tecnologias e frameworks do mundo frontend. React, Vue, Svelte e mais!',
     imageUrl: 'https://images.unsplash.com/photo-1542831371-29b0f74f9713?q=80&w=400&auto=format&fit=crop',
     isSubscribed: true,
+    ownerId: 'user-4',
   },
   {
     id: 'channel-2',
@@ -47,6 +48,7 @@ export const CHANNELS: Channel[] = [
     description: 'Compartilhe suas criações, peça feedback e discuta as melhores práticas de design de interface e experiência do usuário.',
     imageUrl: '',
     isSubscribed: false,
+    ownerId: 'user-2',
   },
   {
     id: 'channel-3',
@@ -55,6 +57,7 @@ export const CHANNELS: Channel[] = [
     description: 'Tudo sobre roadmaps, priorização, métricas e o dia a dia de um gerente de produtos. Junte-se à conversa!',
     imageUrl: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?q=80&w=400&auto=format&fit=crop',
     isSubscribed: true,
+    ownerId: 'user-3',
   },
     {
     id: 'channel-4',
@@ -63,6 +66,7 @@ export const CHANNELS: Channel[] = [
     description: 'Um espaço para entusiastas da fotografia compartilharem suas melhores fotos, dicas de equipamento e técnicas de edição.',
     imageUrl: 'https://images.unsplash.com/photo-1510127034890-ba27e08285ff?q=80&w=400&auto=format&fit=crop',
     isSubscribed: false,
+    ownerId: 'user-4',
   },
   {
     id: 'channel-5',
@@ -71,6 +75,7 @@ export const CHANNELS: Channel[] = [
     description: 'Cansado de cozinhar? Aqui compartilhamos receitas deliciosas e fáceis para o dia a dia. Bom apetite!',
     imageUrl: 'https://images.unsplash.com/photo-1490645935967-10de6ba17025?q=80&w=400&auto=format&fit=crop',
     isSubscribed: true,
+    ownerId: 'user-1',
   },
    {
     id: 'channel-6',
@@ -79,6 +84,7 @@ export const CHANNELS: Channel[] = [
     description: 'Planejando sua próxima aventura? Encontre roteiros, dicas de economia e histórias inspiradoras de viajantes.',
     imageUrl: 'https://invalid.localhost/broken-channel-cover.jpg',
     isSubscribed: false,
+    ownerId: 'user-4',
   },
 ];
 
@@ -120,6 +126,7 @@ export const POSTS: Post[] = [
       provider: 'youtube',
       embedUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
     },
+    mediaLayout: 'horizontal',
     rating: 4.2,
     ratingVotes: 19,
     userRating: 0,
@@ -157,6 +164,7 @@ export const POSTS: Post[] = [
     timestamp: 'Ontem',
     imageUrl: 'https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?q=80&w=800&auto=format&fit=crop',
     mediaUrl: 'https://samplelib.com/lib/preview/mp4/sample-5s.mp4',
+    mediaLayout: 'vertical',
     rating: 3.9,
     ratingVotes: 10,
     userRating: 0,

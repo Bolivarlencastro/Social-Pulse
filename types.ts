@@ -66,6 +66,7 @@ export interface Channel {
   description: string;
   imageUrl: string;
   isSubscribed: boolean;
+  ownerId?: string;
   isActive?: boolean;
 }
 
@@ -100,6 +101,8 @@ export interface Post {
   timestamp: string;
   imageUrl?: string;
   mediaUrl?: string;
+  mediaLayout?: 'vertical' | 'horizontal';
+  durationSeconds?: number;
   embed?: PostEmbed;
   rating: number;
   ratingVotes: number;
