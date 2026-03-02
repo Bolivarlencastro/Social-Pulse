@@ -114,6 +114,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const [showSubscribedOnly, setShowSubscribedOnly] = useState(false);
+    const [showOwnedOnly, setShowOwnedOnly] = useState(false);
     const [expandedOwnedChannels, setExpandedOwnedChannels] = useState(false);
     const [expandedSubscribedChannels, setExpandedSubscribedChannels] = useState(false);
     const [channelInternalTab, setChannelInternalTab] = useState<'pulses' | 'discussion'>('pulses');
@@ -505,7 +506,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         channel => channel.isSubscribed && channel.ownerId !== currentUserId
     );
     const availableCategories = Array.from(new Set(activeChannels.map(channel => channel.category || 'Geral')));
-    const availableLanguages = ['PT-BR', 'EN', 'ES'];
+    const availableLanguages = ['Português', 'Inglês', 'Espanhol'];
     const availableContentTypes = [
         { value: 'VIDEO', label: 'Vídeo', icon: 'play_circle' },
         { value: 'IMAGE', label: 'Imagem', icon: 'image' },
@@ -547,9 +548,10 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         setSelectedCategories([]);
         setShowFavoritesOnly(false);
         setShowSubscribedOnly(false);
+        setShowOwnedOnly(false);
     };
 
-    const hasActiveFilters = selectedLanguages.length > 0 || selectedContentTypes.length > 0 || selectedCategories.length > 0 || showFavoritesOnly || showSubscribedOnly;
+    const hasActiveFilters = selectedLanguages.length > 0 || selectedContentTypes.length > 0 || selectedCategories.length > 0 || showFavoritesOnly || showSubscribedOnly || showOwnedOnly;
     const channelsInSelectedCategory = selectedCategory
         ? activeChannels.filter(channel => (channel.category || 'Geral') === selectedCategory)
         : activeChannels;
@@ -595,9 +597,9 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         
         // Filtro por idioma (placeholder - usar dados reais quando disponível)
         if (selectedLanguages.length > 0) {
-            // Por enquanto, todos os posts são considerados PT-BR
+            // Por enquanto, todos os posts são considerados Português
             // Implementar quando houver dado de idioma nos posts
-            result = result.filter(() => selectedLanguages.includes('PT-BR'));
+            result = result.filter(() => selectedLanguages.includes('Português'));
         }
         
         // Filtro de favoritos (toggle)
@@ -613,8 +615,16 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
             });
         }
         
+        // Filtro de canais criados por mim (toggle)
+        if (showOwnedOnly) {
+            result = result.filter(post => {
+                const channel = channelsMap[post.channelId];
+                return channel?.ownerId === currentUserId;
+            });
+        }
+        
         return result;
-    }, [visiblePosts, selectedChannel, selectedCategory, selectedCategories, selectedContentTypes, selectedLanguages, showFavoritesOnly, showSubscribedOnly, channelsMap]);
+    }, [visiblePosts, selectedChannel, selectedCategory, selectedCategories, selectedContentTypes, selectedLanguages, showFavoritesOnly, showSubscribedOnly, showOwnedOnly, channelsMap, currentUserId]);
     
     const displayedFeedPosts = React.useMemo(() => {
         if (feedQuickFilter === 'favorites') {
@@ -636,7 +646,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     React.useEffect(() => {
         setLoadedFeedCount(Math.min(INITIAL_FEED_BATCH, displayedFeedPosts.length));
         setIsLoadingMoreFeed(false);
-    }, [INITIAL_FEED_BATCH, displayedFeedPosts.length, feedDisplayMode, selectedChannel, selectedCategory, feedQuickFilter, selectedCategories, selectedContentTypes, selectedLanguages, showFavoritesOnly, showSubscribedOnly]);
+    }, [INITIAL_FEED_BATCH, displayedFeedPosts.length, feedDisplayMode, selectedChannel, selectedCategory, feedQuickFilter, selectedCategories, selectedContentTypes, selectedLanguages, showFavoritesOnly, showSubscribedOnly, showOwnedOnly]);
 
     React.useEffect(() => {
         if (userViewMode === 'admin') return;
@@ -1558,61 +1568,64 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </div>
 
                                 <div className="space-y-4">
-                                    {/* Filtro de Favoritos (Toggle) */}
+                                    {/* Filtro Geral (Chips) */}
                                     <div>
-                                        <label className="flex items-center justify-between cursor-pointer">
-                                            <span className="text-sm font-medium text-gray-700">Pulses favoritos</span>
-                                            <div className="relative">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only"
-                                                    checked={showFavoritesOnly}
-                                                    onChange={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                                                />
-                                                <div className={`w-11 h-6 rounded-full transition-colors ${showFavoritesOnly ? 'bg-purple-600' : 'bg-gray-300'}`}>
-                                                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${showFavoritesOnly ? 'translate-x-5' : 'translate-x-0'}`} />
-                                                </div>
-                                            </div>
-                                        </label>
-                                    </div>
-
-                                    {/* Filtro de Inscritos (Toggle) */}
-                                    <div>
-                                        <label className="flex items-center justify-between cursor-pointer">
-                                            <span className="text-sm font-medium text-gray-700">Pulses de inscritos</span>
-                                            <div className="relative">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only"
-                                                    checked={showSubscribedOnly}
-                                                    onChange={() => setShowSubscribedOnly(!showSubscribedOnly)}
-                                                />
-                                                <div className={`w-11 h-6 rounded-full transition-colors ${showSubscribedOnly ? 'bg-purple-600' : 'bg-gray-300'}`}>
-                                                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${showSubscribedOnly ? 'translate-x-5' : 'translate-x-0'}`} />
-                                                </div>
-                                            </div>
-                                        </label>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Geral</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setShowFavoritesOnly(!showFavoritesOnly);
+                                                    setShowSubscribedOnly(false);
+                                                    setShowOwnedOnly(false);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                    showFavoritesOnly
+                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Favoritos
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setShowOwnedOnly(!showOwnedOnly);
+                                                    setShowFavoritesOnly(false);
+                                                    setShowSubscribedOnly(false);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                    showOwnedOnly
+                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Criados por mim
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setShowSubscribedOnly(!showSubscribedOnly);
+                                                    setShowFavoritesOnly(false);
+                                                    setShowOwnedOnly(false);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                    showSubscribedOnly
+                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Inscritos
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Filtro de Idioma */}
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Idioma</p>
                                         <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSelectedLanguages([])}
-                                                className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
-                                                    selectedLanguages.length === 0
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                Todos
-                                            </button>
                                             {availableLanguages.map(language => (
                                                 <button
                                                     key={language}
                                                     onClick={() => toggleLanguage(language)}
-                                                    className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                                         selectedLanguages.includes(language)
                                                             ? 'bg-purple-100 text-purple-900 border-purple-100'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -1628,29 +1641,17 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Tipo</p>
                                         <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSelectedContentTypes([])}
-                                                className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border gap-2 ${
-                                                    selectedContentTypes.length === 0
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <Icon name="layers" size="sm" />
-                                                <span>Todos</span>
-                                            </button>
                                             {availableContentTypes.map(type => (
                                                 <button
                                                     key={type.value}
                                                     onClick={() => toggleContentType(type.value)}
-                                                    className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border gap-2 ${
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                                         selectedContentTypes.includes(type.value)
                                                             ? 'bg-purple-100 text-purple-900 border-purple-100'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                                                     }`}
                                                 >
-                                                    <Icon name={type.icon} size="sm" />
-                                                    <span>{type.label}</span>
+                                                    {type.label}
                                                 </button>
                                             ))}
                                         </div>
@@ -1660,21 +1661,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Categoria</p>
                                         <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSelectedCategories([])}
-                                                className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
-                                                    selectedCategories.length === 0
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                Todas
-                                            </button>
                                             {availableCategories.map(category => (
                                                 <button
                                                     key={category}
                                                     onClick={() => toggleCategory(category)}
-                                                    className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                                         selectedCategories.includes(category)
                                                             ? 'bg-purple-100 text-purple-900 border-purple-100'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -2271,61 +2262,64 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 </div>
 
                                 <div className="space-y-4">
-                                    {/* Filtro de Favoritos (Toggle) */}
+                                    {/* Filtro Geral (Chips) */}
                                     <div>
-                                        <label className="flex items-center justify-between cursor-pointer">
-                                            <span className="text-sm font-medium text-gray-700">Pulses favoritos</span>
-                                            <div className="relative">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only"
-                                                    checked={showFavoritesOnly}
-                                                    onChange={() => setShowFavoritesOnly(!showFavoritesOnly)}
-                                                />
-                                                <div className={`w-11 h-6 rounded-full transition-colors ${showFavoritesOnly ? 'bg-purple-600' : 'bg-gray-300'}`}>
-                                                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${showFavoritesOnly ? 'translate-x-5' : 'translate-x-0'}`} />
-                                                </div>
-                                            </div>
-                                        </label>
-                                    </div>
-
-                                    {/* Filtro de Inscritos (Toggle) */}
-                                    <div>
-                                        <label className="flex items-center justify-between cursor-pointer">
-                                            <span className="text-sm font-medium text-gray-700">Pulses de inscritos</span>
-                                            <div className="relative">
-                                                <input
-                                                    type="checkbox"
-                                                    className="sr-only"
-                                                    checked={showSubscribedOnly}
-                                                    onChange={() => setShowSubscribedOnly(!showSubscribedOnly)}
-                                                />
-                                                <div className={`w-11 h-6 rounded-full transition-colors ${showSubscribedOnly ? 'bg-purple-600' : 'bg-gray-300'}`}>
-                                                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${showSubscribedOnly ? 'translate-x-5' : 'translate-x-0'}`} />
-                                                </div>
-                                            </div>
-                                        </label>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Geral</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setShowFavoritesOnly(!showFavoritesOnly);
+                                                    setShowSubscribedOnly(false);
+                                                    setShowOwnedOnly(false);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                    showFavoritesOnly
+                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Favoritos
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setShowOwnedOnly(!showOwnedOnly);
+                                                    setShowFavoritesOnly(false);
+                                                    setShowSubscribedOnly(false);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                    showOwnedOnly
+                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Criados por mim
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setShowSubscribedOnly(!showSubscribedOnly);
+                                                    setShowFavoritesOnly(false);
+                                                    setShowOwnedOnly(false);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                    showSubscribedOnly
+                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                Inscritos
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Filtro de Idioma */}
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Idioma</p>
                                         <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSelectedLanguages([])}
-                                                className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
-                                                    selectedLanguages.length === 0
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                Todos
-                                            </button>
                                             {availableLanguages.map(language => (
                                                 <button
                                                     key={language}
                                                     onClick={() => toggleLanguage(language)}
-                                                    className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                                         selectedLanguages.includes(language)
                                                             ? 'bg-purple-100 text-purple-900 border-purple-100'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
@@ -2341,29 +2335,17 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Tipo</p>
                                         <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSelectedContentTypes([])}
-                                                className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border gap-2 ${
-                                                    selectedContentTypes.length === 0
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <Icon name="layers" size="sm" />
-                                                <span>Todos</span>
-                                            </button>
                                             {availableContentTypes.map(type => (
                                                 <button
                                                     key={type.value}
                                                     onClick={() => toggleContentType(type.value)}
-                                                    className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border gap-2 ${
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                                         selectedContentTypes.includes(type.value)
                                                             ? 'bg-purple-100 text-purple-900 border-purple-100'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                                                     }`}
                                                 >
-                                                    <Icon name={type.icon} size="sm" />
-                                                    <span>{type.label}</span>
+                                                    {type.label}
                                                 </button>
                                             ))}
                                         </div>
@@ -2373,21 +2355,11 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                     <div>
                                         <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-2">Categoria</p>
                                         <div className="flex flex-wrap gap-2">
-                                            <button
-                                                onClick={() => setSelectedCategories([])}
-                                                className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
-                                                    selectedCategories.length === 0
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                Todas
-                                            </button>
                                             {availableCategories.map(category => (
                                                 <button
                                                     key={category}
                                                     onClick={() => toggleCategory(category)}
-                                                    className={`inline-flex items-center justify-center h-8 px-4 rounded-full text-sm font-medium transition-all border ${
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
                                                         selectedCategories.includes(category)
                                                             ? 'bg-purple-100 text-purple-900 border-purple-100'
                                                             : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
