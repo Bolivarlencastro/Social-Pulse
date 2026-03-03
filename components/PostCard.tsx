@@ -350,70 +350,6 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
   };
 
   const normalizedContentType = (post.contentType || '').toUpperCase();
-  const isVideoEmbed = !!post.embed && (post.embed.provider === 'youtube' || post.embed.provider === 'vimeo');
-  const isInlineVideo = normalizedContentType === 'VIDEO' && (isVideoEmbed || !!post.mediaUrl);
-  const isInlineAudio = normalizedContentType === 'PODCAST' && !!post.mediaUrl;
-  const isImagePulse = normalizedContentType === 'IMAGE';
-  const shouldShowFloatingPlay = !['VIDEO', 'PODCAST'].includes(normalizedContentType);
-  const inlineVideoLayout = post.mediaLayout === 'vertical' ? 'vertical' : 'horizontal';
-  const inlineImageLayout = post.mediaLayout === 'vertical' ? 'vertical' : post.mediaLayout === 'horizontal' ? 'horizontal' : 'square';
-  const imageAspectClass = inlineImageLayout === 'vertical' ? 'aspect-[4/5]' : inlineImageLayout === 'horizontal' ? 'aspect-[16/9]' : 'aspect-square';
-
-  const renderInlineFeedMedia = () => {
-      if (isInlineVideo) {
-          return (
-              <div className="w-full bg-black border-y border-gray-200">
-                  <div className={`mx-auto ${inlineVideoLayout === 'vertical' ? 'max-w-[420px]' : 'w-full'}`}>
-                      <div className={inlineVideoLayout === 'vertical' ? 'aspect-[9/16] w-full' : 'aspect-video w-full'}>
-                          {isVideoEmbed && post.embed ? (
-                              <iframe
-                                  src={post.embed.embedUrl}
-                                  className="w-full h-full"
-                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                  allowFullScreen
-                                  title="Video do pulse"
-                              />
-                          ) : (
-                              <video className="w-full h-full object-contain" controls preload="metadata">
-                                  {post.mediaUrl && <source src={post.mediaUrl} />}
-                                  Seu navegador não suporta vídeo.
-                              </video>
-                          )}
-                      </div>
-                  </div>
-              </div>
-          );
-      }
-
-      if (isInlineAudio) {
-          return (
-              <div className="w-full border-y border-gray-200">
-                  <div className="relative aspect-square w-full overflow-hidden">
-                      {post.imageUrl && !hasImageError ? (
-                          <img
-                              src={post.imageUrl}
-                              alt="Capa do podcast"
-                              className="absolute inset-0 w-full h-full object-cover"
-                              onError={() => setHasImageError(true)}
-                          />
-                      ) : (
-                          <EmptyCover className="absolute inset-0 w-full h-full" />
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center px-4">
-                          <div className="w-full max-w-md rounded-xl bg-white px-4 py-3 shadow-lg">
-                              <audio className="w-full" controls preload="metadata">
-                                  {post.mediaUrl && <source src={post.mediaUrl} />}
-                                  Seu navegador não suporta áudio.
-                              </audio>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          );
-      }
-
-      return null;
-  };
 
   if (viewMode === 'grid') {
     const pulseMeta = getPulseTypeMeta();
@@ -513,36 +449,22 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onRate, onAddComment, 
       </div>
 
 
-      {/* Post Content */}
-      {(isInlineVideo || isInlineAudio) ? (
-          renderInlineFeedMedia()
-      ) : (
-          post.imageUrl && !hasImageError ? (
-              <div className="w-full bg-gray-100 border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
-                  <div className={`${isImagePulse ? imageAspectClass : 'aspect-square'} w-full`}>
-                      <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
-                  </div>
-                  {shouldShowFloatingPlay && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
-                              <Icon name="play_arrow" size="md" />
-                          </div>
-                      </div>
-                  )}
+      {/* Post Content - Todos os pulses agora exibem capa 1:1 com ícone de play pulsante */}
+      <div className="w-full border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
+          <div className="aspect-square w-full">
+              {post.imageUrl && !hasImageError ? (
+                  <img src={post.imageUrl} alt="Post content" className="w-full h-full object-cover" onError={() => setHasImageError(true)} />
+              ) : (
+                  <EmptyCover className="w-full h-full" />
+              )}
+          </div>
+          {/* Ícone de play pulsante para TODOS os pulses */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
+                  <Icon name="play_arrow" size="md" />
               </div>
-          ) : (
-              <div className="w-full border-y border-gray-200 cursor-pointer relative" onClick={() => onOpenPost?.(post.id)}>
-                  <EmptyCover className={`${isImagePulse ? imageAspectClass : 'aspect-square'} w-full`} />
-                  {shouldShowFloatingPlay && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-12 h-12 rounded-full bg-black/45 text-white flex items-center justify-center backdrop-blur-sm animate-playPulse">
-                              <Icon name="play_arrow" size="md" />
-                          </div>
-                      </div>
-                  )}
-              </div>
-          )
-      )}
+          </div>
+      </div>
 
 
       {/* Post Actions */}

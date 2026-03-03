@@ -16,13 +16,13 @@ const StoryCard: React.FC<{ story: Story; onLinkClick?: (link: Link) => void }> 
       {story.details.length > 0 && (
         <ul className="space-y-1.5">
           {story.details.map((detail, idx) => (
-            <li key={idx} className="text-xs text-gray-600 flex items-start gap-2">
-              <Icon 
-                name={detail.checked ? "check_box" : "check_box_outline_blank"} 
-                size="sm" 
-                className={`flex-shrink-0 text-[16px] ${detail.checked ? 'text-green-500' : 'text-gray-400'}`} 
+            <li key={idx} className="text-xs text-gray-600 flex items-center gap-2">
+              <Icon
+                name={detail.checked ? "check_box" : "check_box_outline_blank"}
+                size="sm"
+                className={`flex-shrink-0 text-[16px] ${detail.checked ? 'text-green-500' : 'text-gray-400'}`}
               />
-              <span className={`flex-1 ${detail.checked ? 'line-through opacity-70' : ''}`}>
+              <span className="flex-1 leading-tight py-0.5">
                 {detail.link ? (
                   <button 
                     onClick={() => onLinkClick && onLinkClick(detail.link!)}
