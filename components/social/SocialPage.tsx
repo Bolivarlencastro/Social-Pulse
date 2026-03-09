@@ -11,6 +11,7 @@ import { Post, Comment, Channel } from '../../types';
 type SocialViewMode = 'feed' | 'management' | 'channels';
 type FeedQuickFilter = 'all' | 'featured' | 'favorites';
 type UserViewMode = 'admin' | 'user';
+type MobileFilterMenu = 'category' | 'language' | 'type' | null;
 type CreateMainType = 'FILE' | 'LINK' | 'QUIZ' | 'HTML' | null;
 type CreateSubtype =
     | 'VIDEO'
@@ -153,6 +154,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
     const [loadedChannelsCount, setLoadedChannelsCount] = useState(INITIAL_CHANNELS_BATCH);
     const [isLoadingMoreChannels, setIsLoadingMoreChannels] = useState(false);
+    const [mobileFilterMenu, setMobileFilterMenu] = useState<MobileFilterMenu>(null);
     const uploadInputRef = React.useRef<HTMLInputElement | null>(null);
     const coverUploadInputRef = React.useRef<HTMLInputElement | null>(null);
     const lightboxRatingMenuRef = React.useRef<HTMLDivElement | null>(null);
@@ -298,6 +300,17 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         document.addEventListener('mousedown', handleOutsideClick);
         return () => document.removeEventListener('mousedown', handleOutsideClick);
     }, [isEdgeMenuOpen]);
+
+    React.useEffect(() => {
+        const handleOutsideClick = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('[data-mobile-filter-root]')) {
+                setMobileFilterMenu(null);
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideClick);
+        return () => document.removeEventListener('mousedown', handleOutsideClick);
+    }, []);
 
     const toggleEdgeCase = (key: EdgeCaseKey) => {
         setEdgeCases(prev => ({ ...prev, [key]: !prev[key] }));
@@ -552,9 +565,31 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     };
 
     const hasActiveFilters = selectedLanguages.length > 0 || selectedContentTypes.length > 0 || selectedCategories.length > 0 || showFavoritesOnly || showSubscribedOnly || showOwnedOnly;
-    const channelsInSelectedCategory = selectedCategory
-        ? activeChannels.filter(channel => (channel.category || 'Geral') === selectedCategory)
-        : activeChannels;
+    const channelsInSelectedCategory = React.useMemo(() => {
+        let result = activeChannels;
+
+        if (selectedCategory) {
+            result = result.filter(channel => (channel.category || 'Geral') === selectedCategory);
+        }
+
+        if (selectedCategories.length > 0) {
+            result = result.filter(channel => selectedCategories.includes(channel.category || 'Geral'));
+        }
+
+        if (selectedLanguages.length > 0) {
+            result = result.filter(() => selectedLanguages.includes('Português'));
+        }
+
+        if (showSubscribedOnly) {
+            result = result.filter(channel => channel.isSubscribed);
+        }
+
+        if (showOwnedOnly) {
+            result = result.filter(channel => channel.ownerId === currentUserId);
+        }
+
+        return result;
+    }, [activeChannels, currentUserId, selectedCategory, selectedCategories, selectedLanguages, showOwnedOnly, showSubscribedOnly]);
     const channelsFilteredForList = selectedChannel
         ? channelsInSelectedCategory.filter(channel => channel.id === selectedChannel)
         : channelsInSelectedCategory;
@@ -651,6 +686,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
     React.useEffect(() => {
         if (userViewMode === 'admin') return;
         setIsCreateModalOpen(false);
+        setShowOwnedOnly(false);
         if (viewMode === 'management') {
             setViewMode('feed');
         }
@@ -768,6 +804,141 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
         : feedQuickFilter === 'favorites'
             ? 'Pulses favoritos'
             : '';
+    const mobileChipClass = (active: boolean) =>
+        `inline-flex items-center gap-2 shrink-0 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+            active ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-gray-200 bg-white text-gray-700'
+        }`;
+
+    const renderMobileFilterDropdown = (
+        menu: Exclude<MobileFilterMenu, null>,
+        label: string,
+        icon: string,
+        options: Array<{ value: string; label: string }>,
+        selectedValues: string[],
+        toggleValue: (value: string) => void,
+    ) => (
+        <div className="relative shrink-0" data-mobile-filter-root>
+            <button
+                type="button"
+                onClick={() => setMobileFilterMenu(prev => (prev === menu ? null : menu))}
+                className={mobileChipClass(mobileFilterMenu === menu || selectedValues.length > 0)}
+            >
+                <Icon name={icon} size="sm" className="text-[18px]" />
+                <span>{label}</span>
+                {selectedValues.length > 0 && (
+                    <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-purple-100 px-1 text-xs font-semibold text-purple-700">
+                        {selectedValues.length}
+                    </span>
+                )}
+            </button>
+            {mobileFilterMenu === menu && (
+                <div className="absolute left-0 top-full z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
+                    <div className="max-h-72 overflow-y-auto pr-1">
+                        {options.map(option => {
+                            const checked = selectedValues.includes(option.value);
+                            return (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => toggleValue(option.value)}
+                                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                                        checked ? 'bg-purple-50 text-purple-700' : 'text-gray-700 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    <Icon
+                                        name={checked ? 'check_box' : 'check_box_outline_blank'}
+                                        size="sm"
+                                        className={`text-[18px] ${checked ? 'text-purple-600' : 'text-gray-400'}`}
+                                    />
+                                    <span>{option.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+    const renderMobileFilterBar = (mode: 'feed' | 'channels') => (
+        <div className="lg:hidden -mx-4 px-4 pb-3 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {renderMobileFilterDropdown(
+                    'category',
+                    'Categoria',
+                    'folder',
+                    availableCategories.map(category => ({ value: category, label: category })),
+                    selectedCategories,
+                    toggleCategory,
+                )}
+                {renderMobileFilterDropdown(
+                    'language',
+                    'Idioma',
+                    'language',
+                    availableLanguages.map(language => ({ value: language, label: language })),
+                    selectedLanguages,
+                    toggleLanguage,
+                )}
+                {mode === 'feed' && renderMobileFilterDropdown(
+                    'type',
+                    'Formato',
+                    'fiber_manual_record',
+                    availableContentTypes.map(type => ({ value: type.value, label: type.label })),
+                    selectedContentTypes,
+                    toggleContentType,
+                )}
+                {mode === 'feed' && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowFavoritesOnly(!showFavoritesOnly);
+                            setShowSubscribedOnly(false);
+                            setShowOwnedOnly(false);
+                        }}
+                        className={mobileChipClass(showFavoritesOnly)}
+                    >
+                        <Icon name="bookmark" size="sm" className="text-[18px]" />
+                        <span>Favoritos</span>
+                    </button>
+                )}
+                <button
+                    type="button"
+                    onClick={() => {
+                        setShowSubscribedOnly(!showSubscribedOnly);
+                        setShowFavoritesOnly(false);
+                        setShowOwnedOnly(false);
+                    }}
+                    className={mobileChipClass(showSubscribedOnly)}
+                >
+                    <Icon name="bookmark_outline" size="sm" className="text-[18px]" />
+                    <span>{mode === 'channels' ? 'Inscrito' : 'Inscritos'}</span>
+                </button>
+                {canManageAdminFeatures && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowOwnedOnly(!showOwnedOnly);
+                            setShowFavoritesOnly(false);
+                            setShowSubscribedOnly(false);
+                        }}
+                        className={mobileChipClass(showOwnedOnly)}
+                    >
+                        <Icon name="person" size="sm" className="text-[18px]" />
+                        <span>Criados por mim</span>
+                    </button>
+                )}
+                {hasActiveFilters && (
+                    <button
+                        type="button"
+                        onClick={clearAllFilters}
+                        className="inline-flex items-center gap-2 shrink-0 rounded-xl border border-transparent px-3 py-2 text-sm font-semibold text-purple-700"
+                    >
+                        <Icon name="filter_alt_off" size="sm" className="text-[18px]" />
+                        <span>Limpar</span>
+                    </button>
+                )}
+            </div>
+        </div>
+    );
 
     React.useEffect(() => {
         setChannelInternalTab('pulses');
@@ -1428,7 +1599,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fadeIn">
                         {/* Sidebar - Channels & Categories */}
                         {!selectedChannelData && (
-                        <aside className="space-y-6 lg:col-span-3 lg:order-1">
+                        <aside className="hidden lg:block space-y-6 lg:col-span-3 lg:order-1">
                             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                                 <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                                     <Icon name="hub" size="sm" className="text-purple-600" />
@@ -1586,20 +1757,22 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                             >
                                                 Favoritos
                                             </button>
-                                            <button
-                                                onClick={() => {
-                                                    setShowOwnedOnly(!showOwnedOnly);
-                                                    setShowFavoritesOnly(false);
-                                                    setShowSubscribedOnly(false);
-                                                }}
-                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-                                                    showOwnedOnly
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                Criados por mim
-                                            </button>
+                                            {canManageAdminFeatures && (
+                                                <button
+                                                    onClick={() => {
+                                                        setShowOwnedOnly(!showOwnedOnly);
+                                                        setShowFavoritesOnly(false);
+                                                        setShowSubscribedOnly(false);
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                        showOwnedOnly
+                                                            ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    Criados por mim
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => {
                                                     setShowSubscribedOnly(!showSubscribedOnly);
@@ -1684,6 +1857,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         {/* Main Channels */}
                         <div className={`${selectedChannelData ? 'lg:col-span-12 lg:order-1' : 'lg:col-span-6 lg:order-2'} space-y-6`}>
                             {!selectedChannelData && renderTabsBar()}
+                            {!selectedChannelData && renderMobileFilterBar('channels')}
                             {selectedChannelData ? (
                                 <div className="space-y-6">
                                     <div>
@@ -2034,7 +2208,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
 
                         {/* Sidebar - Highlights */}
                         {!selectedChannelData && (
-                        <aside className="space-y-6 lg:col-span-3 lg:order-3">
+                        <aside className="hidden lg:block space-y-6 lg:col-span-3 lg:order-3">
                             {renderPulseDiscoveryCards()}
                         </aside>
                         )}
@@ -2044,6 +2218,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         {/* Main Feed */}
                         <div className="space-y-6 lg:col-span-6 lg:order-2">
                             {renderTabsBar()}
+                            {renderMobileFilterBar('feed')}
                             {feedQuickFilter !== 'all' && (
                                 <div className="bg-purple-50 border border-purple-100 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                                     <p className="text-sm text-purple-900">
@@ -2122,7 +2297,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         </div>
 
                         {/* Sidebar - Channels & Pulses */}
-                        <aside className="space-y-6 lg:col-span-3 lg:order-1">
+                        <aside className="hidden lg:block space-y-6 lg:col-span-3 lg:order-1">
                             <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                                 <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                                     <Icon name="hub" size="sm" className="text-purple-600" />
@@ -2280,20 +2455,22 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                             >
                                                 Favoritos
                                             </button>
-                                            <button
-                                                onClick={() => {
-                                                    setShowOwnedOnly(!showOwnedOnly);
-                                                    setShowFavoritesOnly(false);
-                                                    setShowSubscribedOnly(false);
-                                                }}
-                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-                                                    showOwnedOnly
-                                                        ? 'bg-purple-100 text-purple-900 border-purple-100'
-                                                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                Criados por mim
-                                            </button>
+                                            {canManageAdminFeatures && (
+                                                <button
+                                                    onClick={() => {
+                                                        setShowOwnedOnly(!showOwnedOnly);
+                                                        setShowFavoritesOnly(false);
+                                                        setShowSubscribedOnly(false);
+                                                    }}
+                                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
+                                                        showOwnedOnly
+                                                            ? 'bg-purple-100 text-purple-900 border-purple-100'
+                                                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    Criados por mim
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={() => {
                                                     setShowSubscribedOnly(!showSubscribedOnly);
@@ -2375,7 +2552,7 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                         </aside>
 
                         {/* Sidebar - Highlights */}
-                        <aside className="space-y-6 lg:col-span-3 lg:order-3">
+                        <aside className="hidden lg:block space-y-6 lg:col-span-3 lg:order-3">
                             {renderPulseDiscoveryCards()}
                         </aside>
                     </div>
