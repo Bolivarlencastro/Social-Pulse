@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../Icon';
 import { StoryMapData, Story, Link } from './types';
 
@@ -6,6 +6,8 @@ interface StoryMappingModalProps {
   isOpen: boolean;
   onClose: () => void;
   data: StoryMapData | null;
+  productRequirementsData?: StoryMapData | null;
+  designRequirementsData?: StoryMapData | null;
   onInternalLinkClick?: (target: string) => void;
 }
 
@@ -44,6 +46,38 @@ const StoryCard: React.FC<{ story: Story; onLinkClick?: (link: Link) => void }> 
     </div>
   );
 };
+
+const StoryMapBoard: React.FC<{ data: StoryMapData; onLinkClick: (link: Link) => void }> = ({ data, onLinkClick }) => (
+  <div className="flex-1 overflow-auto bg-[#f8f9fa] p-6">
+    <div className="flex gap-6 min-w-max">
+      {data.activities.map(activity => (
+        <div key={activity.id} className="w-80 flex-shrink-0 flex flex-col gap-4">
+          <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center uppercase font-bold text-gray-800 flex flex-col items-center justify-center min-h-[80px]">
+            {activity.title}
+            {activity.subtitle && <div className="text-xs text-gray-500 mt-1 font-normal normal-case">{activity.subtitle}</div>}
+          </div>
+
+          <div className="flex-1">
+            {data.releases.map(release => {
+              const stories = data.stories[release.id]?.[activity.id];
+              if (!stories || stories.length === 0) return null;
+              return (
+                <div key={release.id} className="mb-6">
+                  <h5 className="text-xs font-bold text-purple-600 uppercase mb-2 pl-1">{release.title}</h5>
+                  <div className="flex flex-col gap-2">
+                    {stories.map(story => (
+                      <StoryCard key={story.id} story={story} onLinkClick={onLinkClick} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 // --- PREVIEW COMPONENTS ---
 
@@ -343,7 +377,16 @@ const WebSimulationScreen: React.FC<{
    );
 };
 
-export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, onClose, data, onInternalLinkClick }) => {
+export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({
+  isOpen,
+  onClose,
+  data,
+  productRequirementsData,
+  designRequirementsData,
+  onInternalLinkClick,
+}) => {
+  const [activeTab, setActiveTab] = useState<'roadmap' | 'prd' | 'drd'>('roadmap');
+
   // Prevent background scroll
   useEffect(() => {
     if (isOpen) {
@@ -353,6 +396,38 @@ export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, on
     }
     return () => { document.body.style.overflow = 'unset'; };
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab('roadmap');
+    }
+  }, [isOpen]);
+
+  const documents = useMemo(() => ([
+    {
+      id: 'roadmap' as const,
+      label: 'Roadmap',
+      icon: 'map',
+      description: 'Visão geral do produto e entregas',
+      data,
+    },
+    {
+      id: 'prd' as const,
+      label: 'PRD',
+      icon: 'fact_check',
+      description: 'Requisitos de produto por área do protótipo',
+      data: productRequirementsData ?? null,
+    },
+    {
+      id: 'drd' as const,
+      label: 'DRD',
+      icon: 'design_services',
+      description: 'Requisitos de design por área do protótipo',
+      data: designRequirementsData ?? null,
+    },
+  ]), [data, designRequirementsData, productRequirementsData]);
+
+  const selectedDocument = documents.find(document => document.id === activeTab) ?? documents[0];
 
   if (!isOpen) return null;
 
@@ -372,63 +447,55 @@ export const StoryMappingModal: React.FC<StoryMappingModalProps> = ({ isOpen, on
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white flex-shrink-0">
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center">
-                <Icon name="map" />
-             </div>
-             <div>
-                <h2 className="text-xl font-bold text-gray-900">{data?.title || 'Story Map'}</h2>
-                <p className="text-sm text-gray-500">Visão geral do produto e entregas</p>
-             </div>
-          </div>
-          
-          <div className="flex items-center">
-              <button 
+        <div className="border-b border-gray-200 bg-white flex-shrink-0">
+          <div className="flex items-center justify-between p-4 gap-4">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 bg-purple-100 text-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Icon name={selectedDocument.icon} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-xl font-bold text-gray-900">{selectedDocument.data?.title || selectedDocument.label}</h2>
+                <p className="text-sm text-gray-500">{selectedDocument.description}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center px-2">
+              <div className="inline-flex items-center gap-2 rounded-xl bg-gray-100 p-1">
+                {documents.map(document => (
+                  <button
+                    key={document.id}
+                    type="button"
+                    onClick={() => setActiveTab(document.id)}
+                    className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                      activeTab === document.id
+                        ? 'bg-white text-purple-700 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Icon name={document.icon} size="sm" className="text-[18px]" />
+                    {document.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center flex-shrink-0">
+              <button
                 onClick={onClose}
                 className="w-10 h-10 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100"
               >
                 <Icon name="close" />
               </button>
+            </div>
           </div>
         </div>
 
         {/* Content Area */}
-        {data ? (
-            <div className="flex-1 overflow-auto bg-[#f8f9fa] p-6">
-                <div className="flex gap-6 min-w-max">
-                    {data.activities.map(activity => (
-                        <div key={activity.id} className="w-80 flex-shrink-0 flex flex-col gap-4">
-                            {/* Header Card */}
-                            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 text-center uppercase font-bold text-gray-800 flex flex-col items-center justify-center min-h-[80px]">
-                                {activity.title}
-                                {activity.subtitle && <div className="text-xs text-gray-500 mt-1 font-normal normal-case">{activity.subtitle}</div>}
-                            </div>
-                            
-                            {/* Stories grouped by Release */}
-                            <div className="flex-1">
-                                {data.releases.map(release => {
-                                    const stories = data.stories[release.id]?.[activity.id];
-                                    if (!stories || stories.length === 0) return null;
-                                    return (
-                                        <div key={release.id} className="mb-6">
-                                            <h5 className="text-xs font-bold text-purple-600 uppercase mb-2 pl-1">{release.title}</h5>
-                                            <div className="flex flex-col gap-2">
-                                                {stories.map(story => (
-                                                    <StoryCard key={story.id} story={story} onLinkClick={handleLinkClick} />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
+        {selectedDocument.data ? (
+            <StoryMapBoard data={selectedDocument.data} onLinkClick={handleLinkClick} />
         ) : (
              <div className="flex-1 flex items-center justify-center text-gray-400">
-                <p>Nenhum dado encontrado para o Story Map.</p>
+                <p>Nenhum dado encontrado para esta visualização.</p>
             </div>
         )}
       </div>

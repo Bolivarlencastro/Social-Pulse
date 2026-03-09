@@ -317,6 +317,11 @@ export const ContentManagementPage: React.FC = () => {
     setOpenActionMenu(null);
   };
 
+  const handleViewChannel = (channelId: string) => {
+    setSelectedChannelId(channelId);
+    setOpenActionMenu(null);
+  };
+
   const handleDeleteChannel = (channelId: string) => {
     const confirmed = window.confirm('Deseja realmente excluir este canal?');
     if (!confirmed) return;
@@ -356,6 +361,14 @@ export const ContentManagementPage: React.FC = () => {
     setOpenActionMenu(null);
   };
 
+  const handleToggleManagedChannelSubscription = (channelId: string) => {
+    setManagedChannels((prev) =>
+      prev.map((channel) =>
+        channel.id === channelId ? { ...channel, isSubscribed: !channel.isSubscribed } : channel
+      )
+    );
+  };
+
   const handleEditPulse = (pulseId: string) => {
     const pulse = managedPosts.find((item) => item.id === pulseId);
     if (!pulse) return;
@@ -364,6 +377,11 @@ export const ContentManagementPage: React.FC = () => {
     setManagedPosts((prev) =>
       prev.map((item) => (item.id === pulseId ? { ...item, text: nextText.trim(), timestamp: 'Editado agora' } : item))
     );
+    setOpenActionMenu(null);
+  };
+
+  const handleViewPulse = (pulseId: string) => {
+    setActivePulseId(pulseId);
     setOpenActionMenu(null);
   };
 
@@ -796,6 +814,7 @@ export const ContentManagementPage: React.FC = () => {
         >
           {openActionMenu.kind === 'channel' ? (
             <>
+              <button onClick={() => handleViewChannel(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Visualizar canal</button>
               <button onClick={() => handleEditChannel(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Editar canal</button>
               <button onClick={() => handleChannelContributors(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Contribuidores</button>
               <button onClick={() => handleChannelTransfer(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Transferir canal</button>
@@ -805,6 +824,7 @@ export const ContentManagementPage: React.FC = () => {
             </>
           ) : (
             <>
+              <button onClick={() => handleViewPulse(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Visualizar pulse</button>
               <button onClick={() => handleEditPulse(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Editar pulse</button>
               <button onClick={() => handleTransferPulse(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Transferir pulse</button>
               <button onClick={() => handleLinkPulseGroup(openActionMenu.id)} className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50">Vincular grupo</button>
@@ -907,13 +927,34 @@ export const ContentManagementPage: React.FC = () => {
               </div>
 
               <div className={`${isLightboxSidebarCollapsed ? 'hidden' : 'flex'} lg:col-span-4 flex-col min-h-0 h-full`}>
-                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <div className="flex items-center justify-between p-3 border-b border-gray-200">
                   <div className="flex items-center gap-3 min-w-0">
-                    <img src={USERS[activePulse.userId]?.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-gray-900 truncate">{USERS[activePulse.userId]?.name || 'Usuário'}</p>
-                      <p className="text-xs text-gray-500 truncate">{selectedChannel?.name || 'Canal'}</p>
+                    <img
+                      className="h-10 w-10 rounded-full object-cover"
+                      src={USERS[activePulse.userId]?.avatarUrl}
+                      alt={USERS[activePulse.userId]?.name || 'Usuário'}
+                    />
+                    <div className="flex flex-col min-w-0">
+                      <div className="text-sm font-semibold text-gray-800 min-w-0">
+                        <span className="block w-full max-w-full truncate">{selectedChannel?.name || 'Canal'}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 min-w-0">
+                        {activePulse.contentType ? <span>{activePulse.contentType} por </span> : <span>Publicado por </span>}
+                        <span className="font-medium text-gray-700 truncate">{USERS[activePulse.userId]?.name || 'Usuário'}</span>
+                        <span>&bull;</span>
+                        <span className="truncate">{activePulse.timestamp}</span>
+                      </div>
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedChannel && (
+                      <button
+                        onClick={() => handleToggleManagedChannelSubscription(selectedChannel.id)}
+                        className="px-1 py-1 text-sm font-semibold text-gray-700 transition-colors hover:text-purple-700 focus:outline-none"
+                      >
+                        {selectedChannel.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
+                      </button>
+                    )}
                   </div>
                 </div>
 

@@ -7,6 +7,7 @@ import { CreateCoursePage } from './components/courses/CreateCoursePage';
 import { SocialPage } from './components/social/SocialPage';
 import { ContentManagementPage } from './components/management/ContentManagementPage';
 import { StoryMappingModal, useStoryMapping } from './components/StoryMapping';
+import { DESIGN_REQUIREMENTS_DATA, PRODUCT_REQUIREMENTS_DATA } from './components/StoryMapping/requirementsData';
 import { View } from './types';
 
 const App: React.FC = () => {
@@ -153,6 +154,8 @@ const App: React.FC = () => {
         isOpen={isRoadmapOpen}
         onClose={() => setIsRoadmapOpen(false)}
         data={roadmapData}
+        productRequirementsData={PRODUCT_REQUIREMENTS_DATA}
+        designRequirementsData={DESIGN_REQUIREMENTS_DATA}
         onInternalLinkClick={handleInternalLink}
       />
     </>

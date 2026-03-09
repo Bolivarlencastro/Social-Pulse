@@ -2794,13 +2794,36 @@ export const SocialPage: React.FC<SocialPageProps> = ({ initialViewMode = 'feed'
                                 {renderLightboxMedia(activePost)}
                             </div>
                             <div className={`${isLightboxSidebarCollapsed ? 'hidden' : 'flex'} lg:col-span-4 flex-col min-h-0 h-full`}>
-                                <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <img src={USERS[activePost.userId]?.avatarUrl} alt="" className="w-9 h-9 rounded-full object-cover" />
-                                        <div>
-                                            <p className="font-semibold text-sm text-gray-900">{USERS[activePost.userId]?.name}</p>
-                                            <p className="text-xs text-gray-500">{channelsMap[activePost.channelId]?.name}</p>
+                                <div className="flex items-center justify-between p-3 border-b border-gray-200">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <img
+                                            className="h-10 w-10 rounded-full object-cover"
+                                            src={USERS[activePost.userId]?.avatarUrl}
+                                            alt={USERS[activePost.userId]?.name || 'Usuário'}
+                                        />
+                                        <div className="flex flex-col min-w-0">
+                                            <div className="text-sm font-semibold text-gray-800 min-w-0">
+                                                <span className="block w-full max-w-full truncate">
+                                                    {channelsMap[activePost.channelId]?.name || 'Canal'}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1.5 min-w-0">
+                                                {activePost.contentType ? <span>{activePost.contentType} por </span> : <span>Publicado por </span>}
+                                                <span className="font-medium text-gray-700 truncate">{USERS[activePost.userId]?.name || 'Usuário'}</span>
+                                                <span>&bull;</span>
+                                                <span className="truncate">{activePost.timestamp}</span>
+                                            </div>
                                         </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {channelsMap[activePost.channelId] && (
+                                            <button
+                                                onClick={() => handleToggleChannelSubscription(activePost.channelId)}
+                                                className="px-1 py-1 text-sm font-semibold text-gray-700 transition-colors hover:text-purple-700 focus:outline-none"
+                                            >
+                                                {channelsMap[activePost.channelId]?.isSubscribed ? 'Inscrito' : 'Inscrever-se'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
